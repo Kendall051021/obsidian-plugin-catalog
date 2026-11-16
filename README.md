@@ -1,8 +1,8 @@
-# 插件目录与指南 / Plugin Catalog & Guides
+# Vault Catalog and Guides
 
 An Obsidian plugin that shows every installed community plugin in a live side panel, keeps a Markdown catalog up to date, and writes a usage guide for each plugin — automatically, right after you install it.
 
-本插件在侧边栏实时列出已安装插件；插件目录变化时自动重写「插件目录总览」；并为每个插件生成中文使用指南（Markdown），默认写入库内 `插件指南/` 文件夹。
+本插件（原名「插件目录与指南」）在侧边栏实时列出已安装插件；插件目录变化时自动重写「插件目录总览」；并为每个插件生成中文使用指南（Markdown），默认写入库内 `插件指南/` 文件夹。
 
 ## Features
 
