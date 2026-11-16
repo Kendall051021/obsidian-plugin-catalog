@@ -1,6 +1,7 @@
 node_modules/
 dist/
 test-out/
+release-assets/
 *.log
 
 # Local-only planning notes and test harness (not part of the published plugin)
