@@ -1,0 +1,31 @@
+{
+  "name": "obsidian-plugin-catalog-guide",
+  "version": "0.1.0",
+  "description": "Live panel for installed Obsidian plugins, an auto-updated Markdown catalog, and generated Chinese usage guides (template or AI).",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "release": "node esbuild.config.mjs production && node scripts/release.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kendall051021/obsidian-plugin-catalog.git"
+  },
+  "author": "Kendall051021",
+  "license": "MIT",
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "plugin-catalog",
+    "documentation",
+    "ai"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.21.0",
+    "obsidian": "^1.5.0",
+    "typescript": "^5.4.0"
+  }
+}

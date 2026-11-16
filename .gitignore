@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-out/
+*.log
+
+# Local-only planning notes and test harness (not part of the published plugin)
+PLAN.md
+test/
+scripts/build.ps1
+scripts/enable-plugin.mjs
+scripts/verify.mjs

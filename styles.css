@@ -1,0 +1,238 @@
+/* 插件目录与指南 —— 侧边栏面板样式 */
+
+.pcg-view {
+  padding: 12px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pcg-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pcg-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pcg-title-text {
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.pcg-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.pcg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pcg-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 3px 10px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+}
+
+.pcg-btn:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.pcg-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pcg-btn-accent {
+  border-color: var(--interactive-accent);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.pcg-btn-accent:hover:not(:disabled) {
+  background: var(--interactive-accent-hover);
+}
+
+.pcg-search-wrap {
+  display: flex;
+}
+
+.pcg-search {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: var(--font-ui-small);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.pcg-search:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+.pcg-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.pcg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.pcg-group-title {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 6px 0 2px;
+}
+
+.pcg-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.pcg-row:hover {
+  border-color: var(--interactive-accent);
+}
+
+.pcg-row-disabled {
+  opacity: 0.72;
+}
+
+.pcg-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pcg-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pcg-name {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+}
+
+.pcg-version {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pcg-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1.5;
+}
+
+.pcg-badge-on {
+  color: var(--text-success, #2e7d32);
+  border-color: currentColor;
+}
+
+.pcg-badge-busy {
+  color: var(--text-accent);
+  border-color: currentColor;
+}
+
+.pcg-badge-fail {
+  color: var(--text-error, #c62828);
+  border-color: currentColor;
+}
+
+.pcg-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pcg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.pcg-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pcg-actions .pcg-btn {
+  padding: 2px 8px;
+}
+
+.pcg-empty {
+  padding: 18px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.pcg-footer {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pcg-footer-line {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* 设置页 */
+
+.pcg-settings-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.pcg-settings-stats {
+  font-size: var(--font-ui-small);
+  color: var(--text-accent);
+}

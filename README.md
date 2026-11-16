@@ -1,0 +1,87 @@
+# 插件目录与指南 / Plugin Catalog & Guides
+
+An Obsidian plugin that shows every installed community plugin in a live side panel, keeps a Markdown catalog up to date, and writes a usage guide for each plugin — automatically, right after you install it.
+
+本插件在侧边栏实时列出已安装插件；插件目录变化时自动重写「插件目录总览」；并为每个插件生成中文使用指南（Markdown），默认写入库内 `插件指南/` 文件夹。
+
+## Features
+
+- **Live panel** — installed plugins with version, enabled state, real command count, guide status; searchable.
+- **Auto catalog** — rewrites `Obsidian 插件目录（总览）.md` whenever the plugin folder or enable state changes (total table, categories, core plugin status, maintenance notes).
+- **Auto guides** — detects a newly installed plugin within ~1–3 s (`fs.watch` + polling fallback) and writes `插件指南 - <plugin>.md`.
+- **Grounded content** — guides are built from `manifest.json`, the live command registry, saved `data.json` keys (secrets masked), and the plugin's GitHub README. No invented features or shortcuts.
+- **Hand-written guides are safe** — existing files are skipped by default; overwriting always backs up to `.obsidian/plugin-catalog/backups/`.
+- **Optional AI** — with an OpenAI-compatible API key (DeepSeek by default) guides are rewritten in natural Chinese; failures fall back to the template automatically.
+- **Stays accurate** — after a plugin update, the generated guide's version/status frontmatter is synced automatically.
+
+## Install
+
+### Manual
+
+1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/Kendall051021/obsidian-plugin-catalog/releases).
+2. Put them in `<vault>/.obsidian/plugins/plugin-catalog-guide/`.
+3. In Obsidian: **Settings → Community plugins → Installed plugins**, enable **插件目录与指南**.
+
+### BRAT
+
+Add `Kendall051021/obsidian-plugin-catalog` as a beta plugin in [BRAT](https://github.com/TfTHacker/obsidian42-brat).
+
+## Usage
+
+- Click the book icon in the ribbon, or run **插件目录与指南: 打开插件目录面板**.
+- Panel buttons: **刷新** (rescan), **生成缺失** (generate missing guides), **打开总览**; per-row **生成 / 重生成 / 打开**.
+- Commands:
+  - `打开插件目录面板`
+  - `重新扫描插件`
+  - `更新插件目录总览`
+  - `生成所有缺失指南`
+  - `重新生成所有自动生成的指南`
+  - `打开插件目录总览`
+- Settings:
+  - output folder (default `插件指南`), overwrite policy (`skip` / `backup` / `overwrite`)
+  - auto-generate on install, on startup; README fetching; polling interval
+  - catalog extras: core plugin status, themes
+  - AI: base URL (default `https://api.deepseek.com`), model (`deepseek-chat`), API key, max tokens, timeout
+
+## How guides are generated
+
+1. `manifest.json` → name, version, author, compatibility, platform.
+2. Obsidian command registry → the plugin's real command names.
+3. `data.json` → saved setting keys (values containing key/token/secret/password are masked).
+4. `community-plugins.json` (GitHub) → repository, then README raw text.
+5. Output: AI first when configured, otherwise the local template. Every generated file carries `generator: plugin-catalog-guide` in its frontmatter.
+
+> Generated guides are in Chinese. The plugin UI and README are bilingual where practical.
+
+## Limitations
+
+- Obsidian has no "plugin installed" event, so detection is directory watching + polling (≈1–3 s).
+- Plugins installed but not enabled are listed and marked 未启用.
+- README fetching needs access to `raw.githubusercontent.com`; failure degrades to the template without stopping.
+- Deleting a plugin removes it from the catalog; its guide is kept by design.
+- Writes are serialized, but a cloud-sync plugin may still create conflict copies in the guide folder.
+
+## Development
+
+```bash
+npm install
+npm run dev        # esbuild watch → dist/
+npm run build      # production bundle → dist/
+npm run release    # bundle + copy main.js to repo root (release asset)
+npm run typecheck
+```
+
+Deploying to a vault is intentionally not hard-coded: set `PLUGIN_CATALOG_DEPLOY_DIR` and pass `--deploy` to `esbuild.config.mjs` if you want an automatic copy.
+
+Source layout: `src/main.ts` (lifecycle/commands), `scanner.ts` (plugin snapshot), `library.ts` (guide files/backups), `guide-generator.ts` + `guide-template.ts` (content), `ai.ts` (OpenAI-compatible client), `index-writer.ts` (catalog), `view.ts` (panel), `settings-tab.ts`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## 中文说明（简版）
+
+- 侧边栏面板实时列出插件；安装/删除/升级插件后 1–3 秒内自动更新总览。
+- 新插件自动生成中文使用指南；已存在的手写指南默认跳过，覆盖前自动备份。
+- 可选 AI：填入 OpenAI 兼容 API Key 后，用命令「重新生成所有自动生成的指南」把模板指南升级为 AI 版，手写稿不会被碰。
+- 所有生成文件都在你指定的文件夹里，插件不上传任何数据；API Key 只保存在本插件自己的 `data.json`。
