@@ -165,33 +165,32 @@ export class GuideGenerator {
     }
   }
 
-  /** 把 data.json 里的值按“标签 ↔ 键名”相似度贴到代码提取的设置项上 */
+  /** 把 data.json 的值贴到代码提取的设置项上：只接受高置信度匹配，避免“Note → 关闭”这种误配 */
   private attachCurrentValues(items: SettingItem[], facts: SettingFact[]): SettingItem[] {
     if (facts.length === 0) return items;
     const keys = facts.map((fact) => fact.key);
     return items.map((item) => {
       if (item.current) return item;
-      const normalized = normalizeKey(item.label);
-      if (!normalized) return item;
-      let bestKey: string | null = null;
-      let bestScore = 0;
+      const label = normalizeKey(item.label);
+      if (!label || label.length < 3) return item;
+      let best: { key: string; score: number } | null = null;
       for (const key of keys) {
         const candidate = normalizeKey(key);
         if (!candidate) continue;
-        if (candidate === normalized) {
-          bestKey = key;
-          break;
+        let score = 0;
+        if (candidate === label) {
+          score = 100;
+        } else if (candidate.startsWith(label) || candidate.endsWith(label)) {
+          const diff = candidate.length - label.length;
+          if (diff <= 4) score = 60 - diff;
+        } else if (label.startsWith(candidate) || label.endsWith(candidate)) {
+          const diff = label.length - candidate.length;
+          if (diff <= 4) score = 55 - diff;
         }
-        if (candidate.includes(normalized) || normalized.includes(candidate)) {
-          const score = Math.min(candidate.length, normalized.length);
-          if (score > bestScore) {
-            bestScore = score;
-            bestKey = key;
-          }
-        }
+        if (score > (best?.score ?? 0)) best = { key, score };
       }
-      if (!bestKey) return item;
-      const fact = facts.find((entry) => entry.key === bestKey);
+      if (!best || best.score < 50) return item;
+      const fact = facts.find((entry) => entry.key === best!.key);
       return fact ? { ...item, current: fact.value } : item;
     });
   }

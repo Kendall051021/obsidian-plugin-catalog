@@ -72,25 +72,43 @@ export function parseSettingsDom(root: Element): SettingItem[] {
 
 /**
  * 打开某个插件的设置页并抓取真实控件文本与当前状态。
- * 使用 Obsidian 内部 API：设置窗口会在抓取期间短暂出现，结束后关闭。
+ * 用 openTabById 返回的 tab 自带容器，避免拿到别的标签页。
+ * 抓取结束后关闭设置窗口（用户原本打开的其他设置页会被关掉）。
  */
 export async function scrapeSettingsTab(app: App, pluginId: string): Promise<SettingItem[]> {
   if (typeof document === "undefined") return [];
   const setting = (app as any).setting;
-  if (!setting || typeof setting.openTabById !== "function") return [];
+  if (!setting) return [];
   let opened = false;
   try {
     setting.open?.();
-    setting.openTabById(pluginId);
     opened = true;
-    const container = await waitFor(
-      () => document.querySelector<HTMLElement>(".vertical-tab-content"),
-      2000
-    );
+    let tab: any = null;
+    if (typeof setting.openTabById === "function") {
+      tab = setting.openTabById(pluginId) ?? null;
+    }
+    if (!tab && typeof setting.findTabById === "function") {
+      tab = setting.findTabById(pluginId) ?? null;
+    }
+    let container: HTMLElement | null = tab?.containerEl ?? null;
+    if (!container) {
+      container = await waitFor(
+        () => document.querySelector<HTMLElement>(".modal.mod-settings .vertical-tab-content"),
+        2000
+      );
+    }
     if (!container) return [];
-    await waitFor(() => (container.querySelector(".setting-item") ? true : null), 3000);
-    await sleep(200);
-    return parseSettingsDom(container);
+    const rendered = await waitFor(
+      () => (container!.querySelector(".setting-item") ? true : null),
+      5000
+    );
+    if (!rendered) return [];
+    await sleep(150);
+    const items = parseSettingsDom(container);
+    if (items.length === 0) {
+      console.warn("[plugin-catalog-guide] 设置页已打开，但没解析到 .setting-item");
+    }
+    return items;
   } catch (error) {
     console.warn("[plugin-catalog-guide] 抓取设置页失败", error);
     return [];

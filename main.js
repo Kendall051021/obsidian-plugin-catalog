@@ -781,6 +781,11 @@ function buildTemplateGuideBody(facts) {
   if (items.length > 0) {
     lines.push("\u4EE5\u4E0B\u8BBE\u7F6E\u9879\u540D\u79F0\u6765\u81EA\u63D2\u4EF6\u4EE3\u7801\u6216\u771F\u5B9E\u8BBE\u7F6E\u9875\uFF1B\u5982\u679C\u4F60\u7684\u7248\u672C\u6587\u6848\u4E0D\u540C\uFF0C\u4EE5\u5B9E\u9645\u754C\u9762\u4E3A\u51C6\u3002");
     lines.push("");
+    if (!settingsScraped) {
+      lines.push("> [!warning] \u540D\u79F0\u6765\u81EA\u63D2\u4EF6\u4EE3\u7801\u63D0\u53D6");
+      lines.push("> \u53EF\u80FD\u6DF7\u5165\u5F39\u7A97/\u8868\u5355\u5B57\u6BB5\uFF1B\u5728\u9762\u677F\u91CC\u70B9\u300C\u91CD\u751F\u6210\u300D\u53EF\u6293\u53D6\u771F\u5B9E\u8BBE\u7F6E\u9875\uFF0C\u540D\u79F0\u4E0E\u5F53\u524D\u503C\u4F1A\u66F4\u51C6\u3002");
+      lines.push("");
+    }
     let group;
     for (const item of items) {
       if (item.group && item.group !== group) {
@@ -1096,30 +1101,47 @@ function parseSettingsDom(root) {
   return items;
 }
 async function scrapeSettingsTab(app, pluginId) {
-  var _a, _b;
+  var _a, _b, _c, _d, _e;
   if (typeof document === "undefined") return [];
   const setting = app.setting;
-  if (!setting || typeof setting.openTabById !== "function") return [];
+  if (!setting) return [];
   let opened = false;
   try {
     (_a = setting.open) == null ? void 0 : _a.call(setting);
-    setting.openTabById(pluginId);
     opened = true;
-    const container = await waitFor(
-      () => document.querySelector(".vertical-tab-content"),
-      2e3
-    );
+    let tab = null;
+    if (typeof setting.openTabById === "function") {
+      tab = (_b = setting.openTabById(pluginId)) != null ? _b : null;
+    }
+    if (!tab && typeof setting.findTabById === "function") {
+      tab = (_c = setting.findTabById(pluginId)) != null ? _c : null;
+    }
+    let container = (_d = tab == null ? void 0 : tab.containerEl) != null ? _d : null;
+    if (!container) {
+      container = await waitFor(
+        () => document.querySelector(".modal.mod-settings .vertical-tab-content"),
+        2e3
+      );
+    }
     if (!container) return [];
-    await waitFor(() => container.querySelector(".setting-item") ? true : null, 3e3);
-    await sleep2(200);
-    return parseSettingsDom(container);
+    const rendered = await waitFor(
+      () => container.querySelector(".setting-item") ? true : null,
+      5e3
+    );
+    if (!rendered) return [];
+    await sleep2(150);
+    const items = parseSettingsDom(container);
+    if (items.length === 0) {
+      console.warn("[plugin-catalog-guide] \u8BBE\u7F6E\u9875\u5DF2\u6253\u5F00\uFF0C\u4F46\u6CA1\u89E3\u6790\u5230 .setting-item");
+    }
+    return items;
   } catch (error) {
     console.warn("[plugin-catalog-guide] \u6293\u53D6\u8BBE\u7F6E\u9875\u5931\u8D25", error);
     return [];
   } finally {
     if (opened) {
       try {
-        (_b = setting.close) == null ? void 0 : _b.call(setting);
+        (_e = setting.close) == null ? void 0 : _e.call(setting);
       } catch (e) {
       }
     }
@@ -1241,33 +1263,33 @@ var GuideGenerator = class {
       return [];
     }
   }
-  /** 把 data.json 里的值按“标签 ↔ 键名”相似度贴到代码提取的设置项上 */
+  /** 把 data.json 的值贴到代码提取的设置项上：只接受高置信度匹配，避免“Note → 关闭”这种误配 */
   attachCurrentValues(items, facts) {
     if (facts.length === 0) return items;
     const keys = facts.map((fact) => fact.key);
     return items.map((item) => {
+      var _a;
       if (item.current) return item;
-      const normalized = normalizeKey(item.label);
-      if (!normalized) return item;
-      let bestKey = null;
-      let bestScore = 0;
+      const label = normalizeKey(item.label);
+      if (!label || label.length < 3) return item;
+      let best = null;
       for (const key of keys) {
         const candidate = normalizeKey(key);
         if (!candidate) continue;
-        if (candidate === normalized) {
-          bestKey = key;
-          break;
+        let score = 0;
+        if (candidate === label) {
+          score = 100;
+        } else if (candidate.startsWith(label) || candidate.endsWith(label)) {
+          const diff = candidate.length - label.length;
+          if (diff <= 4) score = 60 - diff;
+        } else if (label.startsWith(candidate) || label.endsWith(candidate)) {
+          const diff = label.length - candidate.length;
+          if (diff <= 4) score = 55 - diff;
         }
-        if (candidate.includes(normalized) || normalized.includes(candidate)) {
-          const score = Math.min(candidate.length, normalized.length);
-          if (score > bestScore) {
-            bestScore = score;
-            bestKey = key;
-          }
-        }
+        if (score > ((_a = best == null ? void 0 : best.score) != null ? _a : 0)) best = { key, score };
       }
-      if (!bestKey) return item;
-      const fact = facts.find((entry) => entry.key === bestKey);
+      if (!best || best.score < 50) return item;
+      const fact = facts.find((entry) => entry.key === best.key);
       return fact ? { ...item, current: fact.value } : item;
     });
   }

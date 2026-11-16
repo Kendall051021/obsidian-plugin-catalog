@@ -194,6 +194,11 @@ export function buildTemplateGuideBody(facts: GuideFacts): string {
   if (items.length > 0) {
     lines.push("以下设置项名称来自插件代码或真实设置页；如果你的版本文案不同，以实际界面为准。");
     lines.push("");
+    if (!settingsScraped) {
+      lines.push("> [!warning] 名称来自插件代码提取");
+      lines.push("> 可能混入弹窗/表单字段；在面板里点「重生成」可抓取真实设置页，名称与当前值会更准。");
+      lines.push("");
+    }
     let group: string | undefined;
     for (const item of items) {
       if (item.group && item.group !== group) {
