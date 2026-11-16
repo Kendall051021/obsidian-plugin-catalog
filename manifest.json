@@ -1,8 +1,8 @@
 {
   "id": "plugin-catalog-guide",
   "name": "Vault Catalog and Guides",
-  "version": "0.3.1",
-  "minAppVersion": "1.4.0",
+  "version": "0.3.2",
+  "minAppVersion": "1.7.2",
   "description": "List installed plugins in a live panel, keep a Markdown catalog updated, and generate step-by-step Chinese usage guides with settings and current values.",
   "author": "Kendall051021",
   "authorUrl": "https://github.com/Kendall051021",
