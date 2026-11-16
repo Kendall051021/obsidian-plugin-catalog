@@ -192,8 +192,7 @@ export class GuideLibrary {
     if (await this.adapter.exists(path)) {
       const current = await this.adapter.read(path).catch(() => "");
       if (current && !current.includes("generator: plugin-catalog-guide")) {
-        const backup = await this.backupFile(path);
-        console.log(`[plugin-catalog-guide] 已备份手写总览 -> ${backup}`);
+        await this.backupFile(path);
       }
     }
     await this.adapter.write(path, markdown);

@@ -202,7 +202,6 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
       await this.saveData(this.settings);
       if (renamed > 0) {
         new Notice(`插件目录与指南：已把 ${renamed} 份指南重命名为「指南-XXX」`);
-        console.log(`[plugin-catalog-guide] 重命名 ${renamed} 份指南`);
       }
     } catch (error) {
       console.warn("[plugin-catalog-guide] 重命名旧指南失败", error);
@@ -245,7 +244,6 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
     if (removed.length === 0) return;
 
     if (!this.settings.deleteGuidesOnUninstall) {
-      console.log(`[plugin-catalog-guide] 检测到卸载：${removed.join(", ")}（已关闭自动删除指南）`);
       return;
     }
 
@@ -257,7 +255,6 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
         try {
           if (await this.library.deleteGuide(entry)) {
             deleted += 1;
-            console.log(`[plugin-catalog-guide] 已删除自动指南：${entry.path}（插件 ${id} 已卸载）`);
           }
         } catch (error) {
           console.warn(`[plugin-catalog-guide] 删除指南失败：${entry.path}`, error);
@@ -343,9 +340,6 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
         console.warn(`[plugin-catalog-guide] 同步指南元信息失败: ${info.id}`, error);
       }
     }
-    if (count > 0) {
-      console.log(`[plugin-catalog-guide] 已同步 ${count} 份指南的版本/状态`);
-    }
     return count;
   }
 
@@ -355,8 +349,7 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
       const existing = await this.library.readOverview();
       const strip = (text: string) => text.replace(/^generated_at:.*$/m, "").replace(/\r\n/g, "\n").trim();
       if (force || !existing || strip(existing) !== strip(content)) {
-        const path = await this.library.writeOverview(content);
-        console.log(`[plugin-catalog-guide] 总览已更新: ${path}`);
+        await this.library.writeOverview(content);
       }
     } catch (error) {
       console.error("[plugin-catalog-guide] 写入总览失败", error);
@@ -434,9 +427,6 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
             this.generatedKeys.add(`${info.id}@${info.version}`);
           }
           results.push({ id: info.id, name: info.name, source, written: result.written, path: result.path });
-          if (!result.written && result.skippedReason) {
-            console.log(`[plugin-catalog-guide] ${info.name}: ${result.skippedReason}`);
-          }
         } catch (error) {
           this.status.set(item.id, "failed");
           results.push({

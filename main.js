@@ -297,8 +297,7 @@ var GuideLibrary = class {
     if (await this.adapter.exists(path)) {
       const current = await this.adapter.read(path).catch(() => "");
       if (current && !current.includes("generator: plugin-catalog-guide")) {
-        const backup = await this.backupFile(path);
-        console.log(`[plugin-catalog-guide] \u5DF2\u5907\u4EFD\u624B\u5199\u603B\u89C8 -> ${backup}`);
+        await this.backupFile(path);
       }
     }
     await this.adapter.write(path, markdown);
@@ -1646,7 +1645,6 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("pcg-settings");
-    containerEl.createEl("h2", { text: "\u63D2\u4EF6\u76EE\u5F55\u4E0E\u6307\u5357" });
     containerEl.createEl("p", {
       cls: "pcg-settings-desc",
       text: "\u5B9E\u65F6\u5217\u51FA\u5DF2\u5B89\u88C5\u63D2\u4EF6\uFF1B\u63D2\u4EF6\u76EE\u5F55\u53D8\u5316\u65F6\u81EA\u52A8\u91CD\u5199\u603B\u89C8\uFF0C\u5E76\u4E3A\u65B0\u63D2\u4EF6\u751F\u6210\u4E2D\u6587\u4F7F\u7528\u6307\u5357\u3002\u6307\u5357\u5168\u90E8\u4EE5 .md \u5199\u5165\u4E0B\u9762\u6307\u5B9A\u7684\u6587\u4EF6\u5939\u3002"
@@ -1657,7 +1655,7 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
       cls: "pcg-settings-stats",
       text: `\u5F53\u524D\uFF1A${snapshot.plugins.length} \u4E2A\u793E\u533A\u63D2\u4EF6\uFF0C\u5DF2\u751F\u6210\u6307\u5357 ${withGuide} \u4EFD\u3002`
     });
-    containerEl.createEl("h3", { text: "\u8F93\u51FA\u4F4D\u7F6E" });
+    new import_obsidian7.Setting(containerEl).setName("\u8F93\u51FA\u4F4D\u7F6E").setHeading();
     new import_obsidian7.Setting(containerEl).setName("\u6307\u5357\u4E0E\u603B\u89C8\u7684\u6587\u4EF6\u5939").setDesc("\u76F8\u5BF9\u5E93\u6839\u76EE\u5F55\uFF0C\u4F8B\u5982\u300C\u63D2\u4EF6\u6307\u5357\u300D\u3002\u4E0D\u5B58\u5728\u4F1A\u81EA\u52A8\u521B\u5EFA\u3002").addText(
       (text) => text.setPlaceholder("\u63D2\u4EF6\u6307\u5357").setValue(this.plugin.settings.outputFolder).onChange((value) => {
         this.plugin.settings.outputFolder = value.trim() || "\u63D2\u4EF6\u6307\u5357";
@@ -1670,7 +1668,7 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    containerEl.createEl("h3", { text: "\u81EA\u52A8\u5316" });
+    new import_obsidian7.Setting(containerEl).setName("\u81EA\u52A8\u5316").setHeading();
     new import_obsidian7.Setting(containerEl).setName("\u68C0\u6D4B\u5230\u65B0\u63D2\u4EF6\u65F6\u81EA\u52A8\u751F\u6210\u6307\u5357").setDesc("\u63D2\u4EF6\u76EE\u5F55\u91CC\u51FA\u73B0\u65B0\u6761\u76EE\u540E\u81EA\u52A8\u751F\u6210\uFF1B\u5173\u6389\u5219\u53EA\u66F4\u65B0\u603B\u89C8\uFF0C\u6307\u5357\u7531\u4F60\u624B\u52A8\u89E6\u53D1\u3002").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoGenerateOnInstall).onChange(async (value) => {
         this.plugin.settings.autoGenerateOnInstall = value;
@@ -1713,7 +1711,7 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    containerEl.createEl("h3", { text: "\u603B\u89C8\u5185\u5BB9" });
+    new import_obsidian7.Setting(containerEl).setName("\u603B\u89C8\u5185\u5BB9").setHeading();
     new import_obsidian7.Setting(containerEl).setName("\u9644\u5E26\u6838\u5FC3\u63D2\u4EF6\u72B6\u6001").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.includeCorePlugins).onChange(async (value) => {
         this.plugin.settings.includeCorePlugins = value;
@@ -1726,7 +1724,7 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    containerEl.createEl("h3", { text: "AI \u589E\u5F3A\uFF08\u53EF\u9009\uFF09" });
+    new import_obsidian7.Setting(containerEl).setName("AI \u589E\u5F3A\uFF08\u53EF\u9009\uFF09").setHeading();
     containerEl.createEl("p", {
       cls: "pcg-settings-desc",
       text: "\u9ED8\u8BA4\u4F7F\u7528\u672C\u5730\u6A21\u677F\u751F\u6210\u6307\u5357\u3002\u586B\u5165 OpenAI \u517C\u5BB9\u63A5\u53E3\u7684 API Key \u540E\uFF0C\u4F1A\u4F18\u5148\u7528 AI \u5199\u4E2D\u6587\u6307\u5357\uFF1B\u8C03\u7528\u5931\u8D25\u81EA\u52A8\u56DE\u9000\u6A21\u677F\uFF0C\u4E0D\u4F1A\u4E2D\u65AD\u3002"
@@ -1768,7 +1766,7 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
         this.scheduleSave();
       })
     );
-    containerEl.createEl("h3", { text: "\u64CD\u4F5C" });
+    new import_obsidian7.Setting(containerEl).setName("\u64CD\u4F5C").setHeading();
     new import_obsidian7.Setting(containerEl).setName("\u7ACB\u5373\u626B\u63CF\u5E76\u66F4\u65B0\u603B\u89C8").addButton(
       (button) => button.setButtonText("\u626B\u63CF").onClick(async () => {
         await this.plugin.refreshAll();
@@ -1954,7 +1952,6 @@ ${detail}
       await this.saveData(this.settings);
       if (renamed > 0) {
         new import_obsidian8.Notice(`\u63D2\u4EF6\u76EE\u5F55\u4E0E\u6307\u5357\uFF1A\u5DF2\u628A ${renamed} \u4EFD\u6307\u5357\u91CD\u547D\u540D\u4E3A\u300C\u6307\u5357-XXX\u300D`);
-        console.log(`[plugin-catalog-guide] \u91CD\u547D\u540D ${renamed} \u4EFD\u6307\u5357`);
       }
     } catch (error) {
       console.warn("[plugin-catalog-guide] \u91CD\u547D\u540D\u65E7\u6307\u5357\u5931\u8D25", error);
@@ -1995,7 +1992,6 @@ ${detail}
     const removed = Array.from(known).filter((id) => !currentIds.has(id));
     if (removed.length === 0) return;
     if (!this.settings.deleteGuidesOnUninstall) {
-      console.log(`[plugin-catalog-guide] \u68C0\u6D4B\u5230\u5378\u8F7D\uFF1A${removed.join(", ")}\uFF08\u5DF2\u5173\u95ED\u81EA\u52A8\u5220\u9664\u6307\u5357\uFF09`);
       return;
     }
     let deleted = 0;
@@ -2006,7 +2002,6 @@ ${detail}
         try {
           if (await this.library.deleteGuide(entry)) {
             deleted += 1;
-            console.log(`[plugin-catalog-guide] \u5DF2\u5220\u9664\u81EA\u52A8\u6307\u5357\uFF1A${entry.path}\uFF08\u63D2\u4EF6 ${id} \u5DF2\u5378\u8F7D\uFF09`);
           }
         } catch (error) {
           console.warn(`[plugin-catalog-guide] \u5220\u9664\u6307\u5357\u5931\u8D25\uFF1A${entry.path}`, error);
@@ -2085,9 +2080,6 @@ ${detail}
         console.warn(`[plugin-catalog-guide] \u540C\u6B65\u6307\u5357\u5143\u4FE1\u606F\u5931\u8D25: ${info.id}`, error);
       }
     }
-    if (count > 0) {
-      console.log(`[plugin-catalog-guide] \u5DF2\u540C\u6B65 ${count} \u4EFD\u6307\u5357\u7684\u7248\u672C/\u72B6\u6001`);
-    }
     return count;
   }
   async writeIndex(force) {
@@ -2096,8 +2088,7 @@ ${detail}
       const existing = await this.library.readOverview();
       const strip = (text) => text.replace(/^generated_at:.*$/m, "").replace(/\r\n/g, "\n").trim();
       if (force || !existing || strip(existing) !== strip(content)) {
-        const path = await this.library.writeOverview(content);
-        console.log(`[plugin-catalog-guide] \u603B\u89C8\u5DF2\u66F4\u65B0: ${path}`);
+        await this.library.writeOverview(content);
       }
     } catch (error) {
       console.error("[plugin-catalog-guide] \u5199\u5165\u603B\u89C8\u5931\u8D25", error);
@@ -2170,9 +2161,6 @@ ${detail}
             this.generatedKeys.add(`${info.id}@${info.version}`);
           }
           results.push({ id: info.id, name: info.name, source, written: result.written, path: result.path });
-          if (!result.written && result.skippedReason) {
-            console.log(`[plugin-catalog-guide] ${info.name}: ${result.skippedReason}`);
-          }
         } catch (error) {
           this.status.set(item.id, "failed");
           results.push({

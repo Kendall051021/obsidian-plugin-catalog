@@ -63,13 +63,32 @@ Add `Kendall051021/obsidian-plugin-catalog` as a beta plugin in [BRAT](https://g
 
 > Generated guides are in Chinese. The plugin UI and README are bilingual where practical.
 
+## Network access and privacy
+
+The plugin works offline except for the requests below. It collects **no telemetry** and uploads **no note content**.
+
+| Request | When | What is sent |
+|---|---|---|
+| `raw.githubusercontent.com/obsidianmd/obsidian-releases` | When generating a guide (or opening the settings page) | Nothing; fetches the public plugin index to find the plugin's repository. Cached for 10 minutes, failures cached for 2 minutes. |
+| `raw.githubusercontent.com/<repo>/HEAD/README.md` | When generating a guide, if **Fetch GitHub README** is enabled | Nothing; fetches the plugin's public README to use as guide material. Disabled with one toggle. |
+| Your configured AI endpoint (OpenAI-compatible) | Only if **AI** is enabled and an API key is set | Plugin name, version, author, description, command list, saved setting keys (values for key/token/secret/password are masked), and a README excerpt. Never your notes. Used only to write the guide. |
+
+The API key is stored locally in this plugin's `data.json`. Settings and generated files never leave your vault.
+
+## Changes to your vault
+
+- Creates `指南-<plugin>.md` files and the catalog `Obsidian 插件目录（总览）.md` in the configured folder (default `插件指南`).
+- Renames existing `插件指南 - X.md` files to `指南-X.md` **once**, using Obsidian's rename API so links in your notes are updated. A flag prevents it from running again.
+- On plugin uninstall, deletes only guides carrying `generator: plugin-catalog-guide`; every deletion is backed up to `.obsidian/plugin-catalog/backups/` first. Hand-written guides are kept.
+- Overwriting an existing guide follows the configured policy (`skip` by default); manual regeneration backs up hand-written files before replacing them.
+
 ## Limitations
 
+- **Desktop only** (`isDesktopOnly: true`). The plugin uses Node's `fs.watch` for near-instant detection; mobile uses no Node APIs, but this build is declared desktop-only.
 - Obsidian has no "plugin installed" event, so detection is directory watching + polling (≈1–3 s).
 - Plugins installed but not enabled are listed and marked 未启用; their settings tab cannot be scraped (the plugin isn't loaded), so code extraction is used.
-- Scraping relies on Obsidian's internal settings API; if it fails, generation falls back to code extraction without interrupting.
+- Scraping relies on Obsidian's settings UI internals; if it fails, generation falls back to code extraction without interrupting.
 - README fetching needs access to `raw.githubusercontent.com`; failure degrades to the template without stopping.
-- Uninstalling a plugin deletes only guides marked `generator: plugin-catalog-guide`; hand-written guides stay.
 - Writes are serialized, but a cloud-sync plugin may still create conflict copies in the guide folder.
 
 ## Development
@@ -97,4 +116,4 @@ MIT — see [LICENSE](LICENSE).
 - 设置细节来源：优先抓取真实设置页（手动生成时，会短暂打开设置窗口），失败时从插件 `main.js` 提取 `setName/setDesc/...` 标签，当前值结合 `data.json`。
 - 卸载插件时只删除本插件自动生成的指南（先备份），手写指南保留并从总览移除。
 - 可选 AI：填入 OpenAI 兼容 API Key 后，用命令「重新生成所有自动生成的指南」把模板指南升级为 AI 版，手写稿不会被碰。
-- 所有生成文件都在你指定的文件夹里，插件不上传任何数据；API Key 只保存在本插件自己的 `data.json`。
+- **仅桌面端**（使用 `fs.watch`）；网络访问与隐私见上一节，插件不收集遥测、不上传笔记内容。

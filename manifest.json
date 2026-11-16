@@ -1,10 +1,10 @@
 {
   "id": "plugin-catalog-guide",
   "name": "插件目录与指南",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "minAppVersion": "1.4.0",
-  "description": "实时查看已安装插件；安装新插件后自动更新插件目录总览，并生成中文使用指南（Markdown，写入指定文件夹）。",
+  "description": "List installed plugins in a live panel, keep a Markdown catalog updated, and generate step-by-step Chinese usage guides with settings and current values.",
   "author": "Kendall051021",
   "authorUrl": "https://github.com/Kendall051021",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

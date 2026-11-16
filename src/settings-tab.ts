@@ -20,7 +20,6 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("pcg-settings");
-    containerEl.createEl("h2", { text: "插件目录与指南" });
     containerEl.createEl("p", {
       cls: "pcg-settings-desc",
       text: "实时列出已安装插件；插件目录变化时自动重写总览，并为新插件生成中文使用指南。指南全部以 .md 写入下面指定的文件夹。",
@@ -33,7 +32,7 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
       text: `当前：${snapshot.plugins.length} 个社区插件，已生成指南 ${withGuide} 份。`,
     });
 
-    containerEl.createEl("h3", { text: "输出位置" });
+    new Setting(containerEl).setName("输出位置").setHeading();
 
     new Setting(containerEl)
       .setName("指南与总览的文件夹")
@@ -63,7 +62,7 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "自动化" });
+    new Setting(containerEl).setName("自动化").setHeading();
 
     new Setting(containerEl)
       .setName("检测到新插件时自动生成指南")
@@ -138,7 +137,7 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
         })
       );
 
-    containerEl.createEl("h3", { text: "总览内容" });
+    new Setting(containerEl).setName("总览内容").setHeading();
 
     new Setting(containerEl)
       .setName("附带核心插件状态")
@@ -159,7 +158,7 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
         })
       );
 
-    containerEl.createEl("h3", { text: "AI 增强（可选）" });
+    new Setting(containerEl).setName("AI 增强（可选）").setHeading();
     containerEl.createEl("p", {
       cls: "pcg-settings-desc",
       text: "默认使用本地模板生成指南。填入 OpenAI 兼容接口的 API Key 后，会优先用 AI 写中文指南；调用失败自动回退模板，不会中断。",
@@ -240,7 +239,7 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "操作" });
+    new Setting(containerEl).setName("操作").setHeading();
 
     new Setting(containerEl)
       .setName("立即扫描并更新总览")
