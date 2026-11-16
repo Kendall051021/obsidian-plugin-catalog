@@ -1,4 +1,4 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath } from "obsidian";
 import { normalizeSettings } from "./normalize";
 import { GuideLibrary, WORK_DIR } from "./library";
 import { Scanner, snapshotSignature } from "./scanner";
@@ -8,7 +8,7 @@ import { buildOverview } from "./index-writer";
 import { VIEW_TYPE, PluginCatalogView } from "./view";
 import { PluginCatalogSettingTab } from "./settings-tab";
 import type { CatalogHost, GuideStatus, PluginCatalogSettings, PluginInfo, Snapshot } from "./types";
-import { formatDateTime, sleep } from "./util";
+import { formatDateTime, sanitizeFileName, sleep } from "./util";
 
 interface QueueItem {
   id: string;
@@ -53,6 +53,7 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
   private scanQueued = false;
   private scanning = false;
   private booted = false;
+  private knownIds: string[] | null = null;
 
   async onload(): Promise<void> {
     try {
@@ -154,6 +155,8 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
     this.booted = true;
     try {
       this.watcher.start();
+      await this.migrateNaming();
+      this.knownIds = await this.readKnownIds();
       await this.library.refresh(true);
       await this.scanOnce("startup");
       const missing = this.snapshot.plugins.filter((plugin) => !plugin.guidePath);
@@ -165,6 +168,105 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
       }
     } catch (error) {
       console.error("[plugin-catalog-guide] 启动扫描失败", error);
+    }
+  }
+
+  /** 旧命名 插件指南 - X.md → 指南-X.md；用 Obsidian 文件管理器重命名以同步库内链接 */
+  private async migrateNaming(): Promise<void> {
+    if (this.settings.namingMigrated) return;
+    try {
+      const folder = this.library.folderPath();
+      if (!(await this.app.vault.adapter.exists(folder))) {
+        this.settings.namingMigrated = true;
+        await this.saveData(this.settings);
+        return;
+      }
+      const listing = await this.app.vault.adapter.list(folder);
+      let renamed = 0;
+      for (const path of listing.files) {
+        const name = path.split("/").pop() ?? "";
+        const match = name.match(/^插件指南\s*-\s*(.+)\.md$/);
+        if (!match) continue;
+        const target = normalizePath(`${folder}/指南-${sanitizeFileName(match[1])}.md`);
+        if (await this.app.vault.adapter.exists(target)) continue;
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) {
+          await this.app.fileManager.renameFile(file, target);
+        } else {
+          await this.app.vault.adapter.write(target, await this.app.vault.adapter.read(path));
+          await this.app.vault.adapter.remove(path);
+        }
+        renamed += 1;
+      }
+      this.settings.namingMigrated = true;
+      await this.saveData(this.settings);
+      if (renamed > 0) {
+        new Notice(`插件目录与指南：已把 ${renamed} 份指南重命名为「指南-XXX」`);
+        console.log(`[plugin-catalog-guide] 重命名 ${renamed} 份指南`);
+      }
+    } catch (error) {
+      console.warn("[plugin-catalog-guide] 重命名旧指南失败", error);
+    }
+  }
+
+  private async readKnownIds(): Promise<string[] | null> {
+    try {
+      const path = `${WORK_DIR}/known-plugins.json`;
+      if (!(await this.app.vault.adapter.exists(path))) return null;
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path));
+      return Array.isArray(parsed?.ids) ? parsed.ids.map(String) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async updateKnownIds(snapshot: Snapshot): Promise<void> {
+    const ids = snapshot.plugins.map((plugin) => plugin.id).sort();
+    const known = (this.knownIds ?? []).slice().sort();
+    if (ids.join("\u0000") === known.join("\u0000")) return;
+    this.knownIds = ids;
+    try {
+      await this.library.ensureFolder(WORK_DIR);
+      await this.app.vault.adapter.write(
+        `${WORK_DIR}/known-plugins.json`,
+        JSON.stringify({ at: formatDateTime(new Date()), ids }, null, 2)
+      );
+    } catch (error) {
+      console.warn("[plugin-catalog-guide] 写入插件清单失败", error);
+    }
+  }
+
+  /** 插件被卸载：删除其自动生成的指南（手写稿保留），并让总览同步移除 */
+  private async cleanupRemovedGuides(snapshot: Snapshot, previous: Snapshot | null): Promise<void> {
+    const currentIds = new Set(snapshot.plugins.map((plugin) => plugin.id));
+    const known = new Set<string>(this.knownIds ?? []);
+    for (const plugin of previous?.plugins ?? []) known.add(plugin.id);
+    const removed = Array.from(known).filter((id) => !currentIds.has(id));
+    if (removed.length === 0) return;
+
+    if (!this.settings.deleteGuidesOnUninstall) {
+      console.log(`[plugin-catalog-guide] 检测到卸载：${removed.join(", ")}（已关闭自动删除指南）`);
+      return;
+    }
+
+    let deleted = 0;
+    for (const id of removed) {
+      const entries = this.library.entriesForPlugin(id);
+      for (const entry of entries) {
+        if (!entry.managed) continue;
+        try {
+          if (await this.library.deleteGuide(entry)) {
+            deleted += 1;
+            console.log(`[plugin-catalog-guide] 已删除自动指南：${entry.path}（插件 ${id} 已卸载）`);
+          }
+        } catch (error) {
+          console.warn(`[plugin-catalog-guide] 删除指南失败：${entry.path}`, error);
+        }
+      }
+    }
+    if (deleted > 0) {
+      await this.library.refresh(true);
+      new Notice(`插件已卸载，已删除 ${deleted} 份自动生成的指南`);
     }
   }
 
@@ -189,9 +291,11 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
       const previous = this.lastSnapshot;
       this.snapshot = snapshot;
       this.lastSnapshot = snapshot;
+      await this.cleanupRemovedGuides(snapshot, previous);
       await this.syncGuidesMetadata(snapshot);
       this.notifyViews();
       await this.writeIndex(false);
+      await this.updateKnownIds(snapshot);
 
       const signature = snapshotSignature(snapshot);
       const changed = signature !== this.lastSignature;
@@ -245,7 +349,8 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
     return count;
   }
 
-  private async writeIndex(force: boolean): Promise<void> {    try {
+  private async writeIndex(force: boolean): Promise<void> {
+    try {
       const content = buildOverview(this.snapshot, this.settings, this.library);
       const existing = await this.library.readOverview();
       const strip = (text: string) => text.replace(/^generated_at:.*$/m, "").replace(/\r\n/g, "\n").trim();
@@ -319,7 +424,9 @@ export default class PluginCatalogPlugin extends Plugin implements CatalogHost {
         this.status.set(item.id, "running");
         this.notifyViews();
         try {
-          const { markdown, source } = await this.generator.build(info, this.snapshot);
+          const { markdown, source } = await this.generator.build(info, this.snapshot, {
+            manual: item.manual,
+          });
           const policy = item.manual ? "overwrite" : this.settings.overwritePolicy;
           const result = await this.library.writeGuide(info, markdown, policy);
           this.status.set(item.id, "idle");

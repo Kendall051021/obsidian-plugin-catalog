@@ -86,6 +86,26 @@ export class PluginCatalogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("卸载插件时删除自动生成的指南")
+      .setDesc("只删本插件生成的指南（带 generator 标记），手写指南保留并从总览移除；删除前会先备份。")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.deleteGuidesOnUninstall).onChange(async (value) => {
+          this.plugin.settings.deleteGuidesOnUninstall = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("手动生成时抓取真实设置页")
+      .setDesc("点「生成/重生成」时短暂打开该插件设置页，读取每个按钮的文字与当前状态；失败自动回退代码提取。安装时的自动生成不会弹设置页。")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.scrapeSettingsOnManual).onChange(async (value) => {
+          this.plugin.settings.scrapeSettingsOnManual = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("抓取 GitHub README 作为素材")
       .setDesc("需要能访问 raw.githubusercontent.com；失败会自动跳过，不影响生成。")
       .addToggle((toggle) =>

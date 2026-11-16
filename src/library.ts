@@ -69,7 +69,7 @@ export class GuideLibrary {
   }
 
   fileNameFor(info: PluginInfo): string {
-    const base = `插件指南 - ${sanitizeFileName(info.name)}`;
+    const base = `指南-${sanitizeFileName(info.name)}`;
     const candidate = `${base}.md`;
     const existing = this.entries.get(normalizePath(`${this.folderPath()}/${candidate}`));
     if (!existing) return candidate;
@@ -202,5 +202,26 @@ export class GuideLibrary {
 
   listEntries(): GuideEntry[] {
     return Array.from(this.entries.values());
+  }
+
+  entriesForPlugin(pluginId: string): GuideEntry[] {
+    return this.listEntries().filter((entry) => entry.pluginId === pluginId);
+  }
+
+  /** 删除一份指南：先备份，再放入 Obsidian 回收站 */
+  async deleteGuide(entry: GuideEntry): Promise<boolean> {
+    const file = this.app.vault.getAbstractFileByPath(entry.path);
+    if (!file) {
+      this.entries.delete(entry.path);
+      return false;
+    }
+    await this.backupFile(entry.path).catch(() => null);
+    try {
+      await this.app.fileManager.trashFile(file);
+    } catch {
+      await this.app.vault.delete(file);
+    }
+    this.entries.delete(entry.path);
+    return true;
   }
 }

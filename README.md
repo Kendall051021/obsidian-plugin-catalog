@@ -8,10 +8,14 @@ An Obsidian plugin that shows every installed community plugin in a live side pa
 
 - **Live panel** — installed plugins with version, enabled state, real command count, guide status; searchable.
 - **Auto catalog** — rewrites `Obsidian 插件目录（总览）.md` whenever the plugin folder or enable state changes (total table, categories, core plugin status, maintenance notes).
-- **Auto guides** — detects a newly installed plugin within ~1–3 s (`fs.watch` + polling fallback) and writes `插件指南 - <plugin>.md`.
-- **Grounded content** — guides are built from `manifest.json`, the live command registry, saved `data.json` keys (secrets masked), and the plugin's GitHub README. No invented features or shortcuts.
+- **Auto guides** — detects a newly installed plugin within ~1–3 s (`fs.watch` + polling fallback) and writes `指南-<plugin>.md`.
+- **Structured guides** — each guide starts with a concrete goal case, then step-by-step settings with the control name and current state, followed by real commands, pitfalls and official links.
+- **Two settings sources** — labels extracted from the plugin bundle (`setName`/`setDesc`/`addToggle`…), plus an optional live scrape of the real settings page (manual generation only) for exact control text and current values.
+- **Grounded content** — guides are built from `manifest.json`, the live command registry, saved `data.json` keys (secrets masked), the plugin's GitHub README and the settings sources above. No invented features or shortcuts.
 - **Hand-written guides are safe** — existing files are skipped by default; overwriting always backs up to `.obsidian/plugin-catalog/backups/`.
-- **Optional AI** — with an OpenAI-compatible API key (DeepSeek by default) guides are rewritten in natural Chinese; failures fall back to the template automatically.
+- **Uninstall cleanup** — when a plugin disappears, its auto-generated guide is backed up then deleted; hand-written guides are kept. The catalog updates either way.
+- **Legacy name migration** — existing `插件指南 - X.md` files are renamed to `指南-X.md` once, using Obsidian's file manager so links keep working.
+- **Optional AI** — with an OpenAI-compatible API key (DeepSeek by default) guides are rewritten in natural Chinese using the same step-by-step format; failures fall back to the template automatically.
 - **Stays accurate** — after a plugin update, the generated guide's version/status frontmatter is synced automatically.
 
 ## Install
@@ -40,6 +44,8 @@ Add `Kendall051021/obsidian-plugin-catalog` as a beta plugin in [BRAT](https://g
 - Settings:
   - output folder (default `插件指南`), overwrite policy (`skip` / `backup` / `overwrite`)
   - auto-generate on install, on startup; README fetching; polling interval
+  - uninstall cleanup: delete auto-generated guides only (hand-written kept)
+  - manual generation may scrape the real settings page for exact control text and current state
   - catalog extras: core plugin status, themes
   - AI: base URL (default `https://api.deepseek.com`), model (`deepseek-chat`), API key, max tokens, timeout
 
@@ -49,16 +55,21 @@ Add `Kendall051021/obsidian-plugin-catalog` as a beta plugin in [BRAT](https://g
 2. Obsidian command registry → the plugin's real command names.
 3. `data.json` → saved setting keys (values containing key/token/secret/password are masked).
 4. `community-plugins.json` (GitHub) → repository, then README raw text.
-5. Output: AI first when configured, otherwise the local template. Every generated file carries `generator: plugin-catalog-guide` in its frontmatter.
+5. Settings items:
+   - **code extraction** — `.setName` / `.setDesc` / `.addToggle` / `.addDropdown` / `.addOption` strings from the plugin bundle;
+   - **live scrape** (manual generation, enabled by default) — opens the plugin settings tab briefly, reads every control label, widget type and current state, then closes;
+   - tried in that order, falling back silently.
+6. Output: AI first when configured, otherwise the local template. Every generated file carries `generator: plugin-catalog-guide` in its frontmatter.
 
 > Generated guides are in Chinese. The plugin UI and README are bilingual where practical.
 
 ## Limitations
 
 - Obsidian has no "plugin installed" event, so detection is directory watching + polling (≈1–3 s).
-- Plugins installed but not enabled are listed and marked 未启用.
+- Plugins installed but not enabled are listed and marked 未启用; their settings tab cannot be scraped (the plugin isn't loaded), so code extraction is used.
+- Scraping relies on Obsidian's internal settings API; if it fails, generation falls back to code extraction without interrupting.
 - README fetching needs access to `raw.githubusercontent.com`; failure degrades to the template without stopping.
-- Deleting a plugin removes it from the catalog; its guide is kept by design.
+- Uninstalling a plugin deletes only guides marked `generator: plugin-catalog-guide`; hand-written guides stay.
 - Writes are serialized, but a cloud-sync plugin may still create conflict copies in the guide folder.
 
 ## Development
@@ -81,7 +92,9 @@ MIT — see [LICENSE](LICENSE).
 
 ## 中文说明（简版）
 
-- 侧边栏面板实时列出插件；安装/删除/升级插件后 1–3 秒内自动更新总览。
-- 新插件自动生成中文使用指南；已存在的手写指南默认跳过，覆盖前自动备份。
+- 侧边栏面板实时列出插件；安装/卸载/升级插件后 1–3 秒内自动更新总览。
+- 新插件自动生成中文使用指南：先给目标案例，再一步步写设置页；命名统一为 `指南-XXX.md`，旧的 `插件指南 - XXX.md` 会在首次加载时自动改名（并同步库内链接）。
+- 设置细节来源：优先抓取真实设置页（手动生成时，会短暂打开设置窗口），失败时从插件 `main.js` 提取 `setName/setDesc/...` 标签，当前值结合 `data.json`。
+- 卸载插件时只删除本插件自动生成的指南（先备份），手写指南保留并从总览移除。
 - 可选 AI：填入 OpenAI 兼容 API Key 后，用命令「重新生成所有自动生成的指南」把模板指南升级为 AI 版，手写稿不会被碰。
 - 所有生成文件都在你指定的文件夹里，插件不上传任何数据；API Key 只保存在本插件自己的 `data.json`。

@@ -19,6 +19,12 @@ export interface PluginCatalogSettings {
   autoGenerateOnInstall: boolean;
   /** 启动时补齐缺失的指南 */
   autoGenerateOnStartup: boolean;
+  /** 卸载插件时删除其自动生成的指南（手写稿保留） */
+  deleteGuidesOnUninstall: boolean;
+  /** 手动生成时抓取真实设置页（会短暂打开设置窗口） */
+  scrapeSettingsOnManual: boolean;
+  /** 旧命名迁移是否已完成 */
+  namingMigrated: boolean;
   /** 尝试抓取 GitHub README 作为素材 */
   fetchReadme: boolean;
   /** 轮询间隔（毫秒），桌面端另有 fs.watch */
@@ -30,6 +36,20 @@ export interface PluginCatalogSettings {
   /** 生成完成后弹通知 */
   notifyOnGenerate: boolean;
   ai: AIConfig;
+}
+
+export type SettingKind = "toggle" | "dropdown" | "slider" | "text" | "button" | "unknown";
+
+export interface SettingItem {
+  label: string;
+  desc?: string;
+  kind: SettingKind;
+  options?: string[];
+  /** 抓取或 data.json 对应的当前值 */
+  current?: string;
+  /** 设置页分组标题（抓取时可用） */
+  group?: string;
+  source: "scrape" | "code";
 }
 
 export interface PluginInfo {

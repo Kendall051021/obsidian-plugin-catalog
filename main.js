@@ -91,7 +91,7 @@ function sleep(ms) {
 
 // src/normalize.ts
 function normalizeSettings(raw) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
   const input = raw != null ? raw : {};
   const aiInput = (_a = input.ai) != null ? _a : {};
   const clamp = (value, min, max, fallback) => {
@@ -104,21 +104,24 @@ function normalizeSettings(raw) {
     overwritePolicy: policy,
     autoGenerateOnInstall: (_c = input.autoGenerateOnInstall) != null ? _c : true,
     autoGenerateOnStartup: (_d = input.autoGenerateOnStartup) != null ? _d : true,
-    fetchReadme: (_e = input.fetchReadme) != null ? _e : true,
+    deleteGuidesOnUninstall: (_e = input.deleteGuidesOnUninstall) != null ? _e : true,
+    scrapeSettingsOnManual: (_f = input.scrapeSettingsOnManual) != null ? _f : true,
+    namingMigrated: (_g = input.namingMigrated) != null ? _g : false,
+    fetchReadme: (_h = input.fetchReadme) != null ? _h : true,
     pollIntervalMs: clamp(input.pollIntervalMs, 1e3, 6e4, 3e3),
-    includeCorePlugins: (_f = input.includeCorePlugins) != null ? _f : true,
-    includeThemes: (_g = input.includeThemes) != null ? _g : false,
-    notifyOnGenerate: (_h = input.notifyOnGenerate) != null ? _h : true,
+    includeCorePlugins: (_i = input.includeCorePlugins) != null ? _i : true,
+    includeThemes: (_j = input.includeThemes) != null ? _j : false,
+    notifyOnGenerate: (_k = input.notifyOnGenerate) != null ? _k : true,
     ai: {
       ...DEFAULT_SETTINGS_AI,
       ...aiInput,
-      enabled: (_i = aiInput.enabled) != null ? _i : false,
+      enabled: (_l = aiInput.enabled) != null ? _l : false,
       maxTokens: clamp(aiInput.maxTokens, 200, 8e3, 2e3),
       timeoutMs: clamp(aiInput.timeoutMs, 5e3, 18e4, 6e4),
       temperature: typeof aiInput.temperature === "number" && Number.isFinite(aiInput.temperature) ? Math.min(1, Math.max(0, aiInput.temperature)) : 0.3,
-      apiKey: ((_j = aiInput.apiKey) != null ? _j : "").trim(),
-      baseUrl: ((_k = aiInput.baseUrl) != null ? _k : "https://api.deepseek.com").trim().replace(/\/+$/, ""),
-      model: ((_l = aiInput.model) != null ? _l : "deepseek-chat").trim()
+      apiKey: ((_m = aiInput.apiKey) != null ? _m : "").trim(),
+      baseUrl: ((_n = aiInput.baseUrl) != null ? _n : "https://api.deepseek.com").trim().replace(/\/+$/, ""),
+      model: ((_o = aiInput.model) != null ? _o : "deepseek-chat").trim()
     }
   };
 }
@@ -180,7 +183,7 @@ var GuideLibrary = class {
     this.entries = next;
   }
   fileNameFor(info) {
-    const base = `\u63D2\u4EF6\u6307\u5357 - ${sanitizeFileName(info.name)}`;
+    const base = `\u6307\u5357-${sanitizeFileName(info.name)}`;
     const candidate = `${base}.md`;
     const existing = this.entries.get((0, import_obsidian.normalizePath)(`${this.folderPath()}/${candidate}`));
     if (!existing) return candidate;
@@ -303,6 +306,25 @@ var GuideLibrary = class {
   }
   listEntries() {
     return Array.from(this.entries.values());
+  }
+  entriesForPlugin(pluginId) {
+    return this.listEntries().filter((entry) => entry.pluginId === pluginId);
+  }
+  /** 删除一份指南：先备份，再放入 Obsidian 回收站 */
+  async deleteGuide(entry) {
+    const file = this.app.vault.getAbstractFileByPath(entry.path);
+    if (!file) {
+      this.entries.delete(entry.path);
+      return false;
+    }
+    await this.backupFile(entry.path).catch(() => null);
+    try {
+      await this.app.fileManager.trashFile(file);
+    } catch (e) {
+      await this.app.vault.delete(file);
+    }
+    this.entries.delete(entry.path);
+    return true;
   }
 };
 
@@ -586,51 +608,16 @@ function classify(info) {
   }
   return { key: "other", label: "\u5176\u4ED6" };
 }
-function categoryHints(category) {
-  switch (category.key) {
-    case "task":
-      return [
-        "\u5148\u5EFA\u4E00\u4E2A\u4E13\u7528\u6587\u4EF6\u5939\uFF08\u5982 `\u4EFB\u52A1/`\uFF09\u6216\u4E00\u4E2A\u770B\u677F\u6587\u4EF6\uFF0C\u518D\u8BA9\u63D2\u4EF6\u63A5\u7BA1",
-        "\u6BCF\u5929\u56FA\u5B9A\u4E00\u4E2A\u65F6\u95F4\u6E05\u7406\u903E\u671F\u9879\uFF0C\u907F\u514D\u4EFB\u52A1\u8D8A\u79EF\u8D8A\u591A"
-      ];
-    case "query":
-      return [
-        "\u5148\u7ED9\u7B14\u8BB0\u8865 frontmatter\uFF08\u5C5E\u6027\uFF09\uFF0C\u67E5\u8BE2\u624D\u6709\u6570\u636E\u53EF\u67E5",
-        "\u7D22\u5F15\u9875\u67E5\u8BE2\u5C3D\u91CF\u5E26 `FROM` \u9650\u5B9A\u8303\u56F4\uFF0C\u907F\u514D\u5168\u5E93\u626B\u63CF\u62D6\u6162\u901F\u5EA6"
-      ];
-    case "ai":
-      return [
-        "\u9996\u6B21\u4F7F\u7528\u5148\u5B8C\u6210 API Key / \u672C\u5730\u6A21\u578B\u914D\u7F6E\uFF0C\u518D\u62FF\u4E00\u4E2A\u5C0F\u6587\u4EF6\u8BD5\u8DD1",
-        "\u6D89\u53CA\u6539\u5199\u7B14\u8BB0\u7684\u64CD\u4F5C\u5148\u5728\u526F\u672C\u4E0A\u8BD5\uFF0C\u786E\u8BA4\u98CE\u683C\u540E\u518D\u6279\u91CF\u6267\u884C"
-      ];
-    case "edit":
-      return ["\u628A\u5E38\u7528\u64CD\u4F5C\u7ED1\u5B9A\u5230\u547D\u4EE4\u9762\u677F\u6216\u5FEB\u6377\u952E", "\u6279\u91CF\u5904\u7406\u524D\u5148\u5907\u4EFD\uFF0C\u6216\u5148\u5728\u6D4B\u8BD5\u6587\u4EF6\u5939\u91CC\u8DD1\u4E00\u904D"];
-    case "style":
-      return [
-        "\u4E00\u6B21\u53EA\u6539\u4E00\u9879\u518D\u89C2\u5BDF\u6548\u679C\uFF0C\u907F\u514D\u6539\u592A\u591A\u627E\u4E0D\u56DE\u539F\u56E0",
-        "\u4E3B\u9898\u76F8\u5173\u8BBE\u7F6E\u6362\u4E3B\u9898\u540E\u53EF\u80FD\u5931\u6548\uFF0C\u9700\u8981\u91CD\u65B0\u68C0\u67E5"
-      ];
-    case "sync":
-      return [
-        "\u9996\u6B21\u540C\u6B65\u524D\u5148\u5907\u4EFD `.obsidian` \u76EE\u5F55",
-        "\u51FA\u73B0\u540C\u6B65\u51B2\u7A81\u526F\u672C\u65F6\u5148\u6BD4\u5BF9\u5185\u5BB9\u518D\u5220\u9664\uFF0C\u4E0D\u8981\u76F4\u63A5\u8986\u76D6"
-      ];
-    case "media":
-      return [
-        "\u7EDF\u4E00\u9644\u4EF6\u5B58\u653E\u6587\u4EF6\u5939\uFF0C\u907F\u514D\u6839\u76EE\u5F55\u5806\u6EE1\u56FE\u7247\u548C PDF",
-        "\u5927\u9644\u4EF6\u8003\u8651\u538B\u7F29\u6216\u5916\u94FE\uFF0C\u51CF\u5C11\u540C\u6B65\u4F53\u79EF"
-      ];
-    case "file":
-      return ["\u5148\u5728\u4E00\u4E2A\u6D4B\u8BD5\u6587\u4EF6\u5939\u91CC\u8BD5\u7528\u91CD\u547D\u540D/\u79FB\u52A8\u529F\u80FD", "\u6279\u91CF\u64CD\u4F5C\u524D\u786E\u8BA4\u6CA1\u6709\u6B63\u5728\u540C\u6B65\u7684\u6587\u4EF6"];
-    default:
-      return [
-        "\u5148\u6309\u5B98\u65B9\u8BF4\u660E\u5B8C\u6210\u57FA\u7840\u914D\u7F6E\uFF0C\u518D\u9010\u6B65\u542F\u7528\u9AD8\u7EA7\u529F\u80FD",
-        "\u6539\u52A8\u524D\u5907\u4EFD `.obsidian` \u76EE\u5F55\uFF0C\u51FA\u95EE\u9898\u53EF\u6574\u4F53\u56DE\u9000"
-      ];
-  }
-}
 
 // src/guide-template.ts
+var KIND_ACTION = {
+  toggle: "\u5207\u6362\u5F00\u5173",
+  dropdown: "\u4ECE\u4E0B\u62C9\u6846\u9009\u62E9\u4E00\u9879",
+  slider: "\u62D6\u52A8\u6ED1\u5757\u8C03\u6574",
+  text: "\u586B\u5199\u8F93\u5165\u6846",
+  button: "\u70B9\u51FB\u6309\u94AE",
+  unknown: "\u6309\u9700\u8C03\u6574"
+};
 function cleanReadme(text, max) {
   const cleaned = text.replace(/\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/<[^>]+>/g, "").replace(/\[\]\([^)]*\)/g, "").replace(/\r\n/g, "\n");
   const lines = [];
@@ -647,122 +634,219 @@ function cleanReadme(text, max) {
   }
   return lines;
 }
+function goalFor(category, name) {
+  switch (category.key) {
+    case "task":
+      return {
+        title: `\u628A\u5F85\u529E\u6536\u8FDB ${name}\uFF0C\u6BCF\u5929\u770B\u5F97\u89C1\u3001\u6E05\u5F97\u6389`,
+        body: [
+          `\u76EE\u6807\uFF1A\u4E0D\u518D\u5230\u5904\u7FFB\u5F85\u529E\uFF0C\u6240\u6709\u4EFB\u52A1\u5728\u4E00\u4E2A\u5730\u65B9\u6536\u96C6\u3001\u5728\u4E00\u5904\u63A8\u8FDB\u3002`,
+          `1. \u5EFA\u4E00\u4E2A\u6536\u96C6\u7BB1\uFF08\u6216\u4E00\u4E2A\u770B\u677F\u6587\u4EF6\uFF09\uFF0C\u5148\u53EA\u653E 3 \u6761\u771F\u5B9E\u5F85\u529E\u3002`,
+          `2. \u7528 ${name} \u7684\u547D\u4EE4\u521B\u5EFA/\u79FB\u52A8\u5361\u7247\uFF0C\u8DD1\u901A\u4E00\u6B21\u5B8C\u6574\u6D41\u7A0B\u3002`,
+          `3. \u6BCF\u5929\u56FA\u5B9A 5 \u5206\u949F\u6E05\u7406\uFF1A\u5B8C\u6210\u7684\u5F52\u6863\uFF0C\u8FC7\u671F\u7684\u91CD\u6392\u3002`
+        ]
+      };
+    case "query":
+      return {
+        title: `\u7ED9\u300C\u5B66\u79D1\u8D44\u6599\u300D\u5EFA\u4E00\u4E2A\u81EA\u52A8\u7D22\u5F15\u9875`,
+        body: [
+          `\u76EE\u6807\uFF1A\u6253\u5F00\u4E00\u4E2A\u9875\u9762\u5C31\u80FD\u770B\u5230\u6240\u6709\u7B14\u8BB0\u7684\u8BFE\u7A0B\u3001\u8FDB\u5EA6\u3001\u6700\u8FD1\u4FEE\u6539\uFF0C\u4E0D\u7528\u624B\u52A8\u7EF4\u62A4\u76EE\u5F55\u3002`,
+          `1. \u5148\u7ED9 5 \u7BC7\u7B14\u8BB0\u8865\u4E0A frontmatter\uFF08\u8BFE\u7A0B\u3001\u7C7B\u578B\u3001\u8FDB\u5EA6\uFF09\u3002`,
+          `2. \u5728\u7D22\u5F15\u9875\u91CC\u5199\u4E00\u4E2A\u6700\u5C0F\u67E5\u8BE2\uFF08LIST \u6216 TABLE\uFF09\uFF0C\u53EA\u7B5B\u9009\u4E00\u4E2A\u6587\u4EF6\u5939\u3002`,
+          `3. \u518D\u9010\u6B65\u52A0 WHERE / SORT / GROUP BY\uFF0C\u786E\u8BA4\u7ED3\u679C\u65E0\u8BEF\u540E\u518D\u6269\u5927\u8303\u56F4\u3002`
+        ]
+      };
+    case "ai":
+      return {
+        title: `\u8BA9 ${name} \u5E2E\u4F60\u6574\u7406\u4E00\u7BC7\u957F\u7B14\u8BB0`,
+        body: [
+          `\u76EE\u6807\uFF1A\u628A\u4E00\u4EFD\u6563\u4E71\u7684\u8BB0\u5F55\u6574\u7406\u6210\u7ED3\u6784\u5316\u6458\u8981\uFF0C\u800C\u4E0D\u662F\u4ECE\u96F6\u91CD\u5199\u3002`,
+          `1. \u5148\u590D\u5236\u4E00\u4EFD\u7B14\u8BB0\u505A\u526F\u672C\uFF0C\u6240\u6709 AI \u64CD\u4F5C\u5148\u5728\u526F\u672C\u4E0A\u8BD5\u3002`,
+          `2. \u7528\u53EA\u8BFB\u63D0\u95EE\u786E\u8BA4\u5B83\u7406\u89E3\u6B63\u786E\uFF0C\u518D\u8BA9\u5B83\u8F93\u51FA\u5E26\u5C0F\u6807\u9898\u7684\u7ED3\u6784\u3002`,
+          `3. \u6EE1\u610F\u540E\u518D\u5E94\u7528\u5230\u6B63\u5F0F\u7B14\u8BB0\uFF0C\u4FDD\u7559\u539F\u59CB\u7248\u672C\u65B9\u4FBF\u5BF9\u6BD4\u3002`
+        ]
+      };
+    case "edit":
+      return {
+        title: `\u5199\u957F\u6587\u65F6\u5C11\u7528\u9F20\u6807\uFF0C\u6392\u7248\u4E00\u6B21\u5230\u4F4D`,
+        body: [
+          `\u76EE\u6807\uFF1A\u6807\u9898\u5C42\u7EA7\u3001\u5217\u8868\u3001\u8868\u683C\u3001\u5F3A\u8C03\u4E00\u6B21\u6027\u6392\u597D\uFF0C\u4E0D\u7528\u6765\u56DE\u70B9\u83DC\u5355\u3002`,
+          `1. \u5728\u4E00\u7BC7\u6D4B\u8BD5\u7B14\u8BB0\u91CC\u8BD5\u7528\u5B83\u7684\u5DE5\u5177\u680F/\u547D\u4EE4\u3002`,
+          `2. \u628A\u6700\u5E38\u7528\u7684 2\u20133 \u4E2A\u64CD\u4F5C\u7ED1\u5B9A\u5230\u5FEB\u6377\u952E\u3002`,
+          `3. \u6279\u91CF\u5904\u7406\u524D\u5148\u5907\u4EFD\uFF0C\u6216\u5148\u5728\u5355\u72EC\u6587\u4EF6\u5939\u8BD5\u8FD0\u884C\u3002`
+        ]
+      };
+    case "style":
+      return {
+        title: `\u628A\u4E3B\u9898\u7684\u914D\u8272\u548C\u5B57\u4F53\u5C42\u7EA7\u8C03\u5230\u987A\u773C`,
+        body: [
+          `\u76EE\u6807\uFF1A\u6807\u9898\u3001\u94FE\u63A5\u3001\u5F3A\u8C03\u5728\u6D45\u8272/\u6DF1\u8272\u4E0B\u90FD\u6E05\u6670\uFF0C\u5E76\u4E14\u914D\u8272\u56FA\u5B9A\u4E0B\u6765\u4E0D\u6765\u56DE\u53D8\u3002`,
+          `1. \u5148\u786E\u8BA4\u76F8\u5173 CSS \u7247\u6BB5\u5DF2\u542F\u7528\uFF08\u8BBE\u7F6E \u2192 \u5916\u89C2 \u2192 CSS \u7247\u6BB5\uFF09\u3002`,
+          `2. \u6253\u5F00\u6837\u5F0F\u63D2\u4EF6\u7684\u8BBE\u7F6E\u9875\uFF0C\u4E00\u6B21\u53EA\u6539\u4E00\u9879\uFF0C\u6539\u5B8C\u7ACB\u523B\u770B\u6548\u679C\u3002`,
+          `3. \u786E\u5B9A\u540E\u5728\u8BBE\u7F6E\u91CC\u56FA\u5B9A\u6D45\u8272/\u6DF1\u8272\u4E24\u5957\u53D6\u503C\uFF0C\u907F\u514D\u6362\u4E3B\u9898\u540E\u5931\u6548\u3002`
+        ]
+      };
+    case "sync":
+      return {
+        title: `\u591A\u8BBE\u5907\u4FDD\u6301\u4E00\u81F4\uFF0C\u51B2\u7A81\u53EF\u63A7`,
+        body: [
+          `\u76EE\u6807\uFF1A\u6362\u8BBE\u5907\u80FD\u63A5\u7740\u5199\uFF0C\u51FA\u73B0\u51B2\u7A81\u65F6\u77E5\u9053\u600E\u4E48\u5904\u7406\u3002`,
+          `1. \u9996\u6B21\u540C\u6B65\u524D\u5907\u4EFD\u6574\u4E2A .obsidian \u76EE\u5F55\u3002`,
+          `2. \u5148\u540C\u6B65\u4E00\u4E2A\u5C0F\u6587\u4EF6\u5939\uFF0C\u786E\u8BA4\u53CC\u5411\u90FD\u6B63\u5E38\u3002`,
+          `3. \u770B\u5230\u51B2\u7A81\u526F\u672C\u5148\u6BD4\u5BF9\u5185\u5BB9\uFF0C\u518D\u51B3\u5B9A\u4FDD\u7559\u54EA\u4E00\u4EFD\u3002`
+        ]
+      };
+    case "media":
+      return {
+        title: `\u9644\u4EF6\u96C6\u4E2D\u7BA1\u7406\uFF0C\u7B14\u8BB0\u4E0D\u88AB\u56FE\u7247\u6DF9\u6CA1`,
+        body: [
+          `\u76EE\u6807\uFF1A\u56FE\u7247\u3001PDF \u7EDF\u4E00\u653E\u5728\u56FA\u5B9A\u6587\u4EF6\u5939\uFF0C\u7B14\u8BB0\u6B63\u6587\u4FDD\u6301\u5E72\u51C0\u3002`,
+          `1. \u5148\u5B9A\u4E00\u4E2A\u9644\u4EF6\u6587\u4EF6\u5939\uFF0C\u5E76\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u6307\u5411\u5B83\u3002`,
+          `2. \u8BD5\u63D2\u5165\u4E00\u5F20\u56FE\u7247\uFF0C\u786E\u8BA4\u5B83\u843D\u5728\u6B63\u786E\u4F4D\u7F6E\u3002`,
+          `3. \u5927\u9644\u4EF6\u8003\u8651\u538B\u7F29\u6216\u5916\u94FE\uFF0C\u51CF\u5C11\u540C\u6B65\u4F53\u79EF\u3002`
+        ]
+      };
+    case "file":
+      return {
+        title: `\u66F4\u5FEB\u627E\u5230\u548C\u79FB\u52A8\u7B14\u8BB0`,
+        body: [
+          `\u76EE\u6807\uFF1A\u5E38\u7528\u6587\u4EF6\u89E6\u624B\u53EF\u53CA\uFF0C\u91CD\u547D\u540D/\u79FB\u52A8\u4E0D\u7834\u574F\u94FE\u63A5\u3002`,
+          `1. \u5148\u5728\u4E00\u4E2A\u6D4B\u8BD5\u6587\u4EF6\u5939\u91CC\u8BD5\u7528\u91CD\u547D\u540D\u4E0E\u79FB\u52A8\u3002`,
+          `2. \u786E\u8BA4\u94FE\u63A5\u81EA\u52A8\u66F4\u65B0\u540E\u518D\u7528\u4E8E\u6B63\u5F0F\u7B14\u8BB0\u3002`,
+          `3. \u6279\u91CF\u64CD\u4F5C\u524D\u786E\u8BA4\u6CA1\u6709\u6B63\u5728\u540C\u6B65\u7684\u6587\u4EF6\u3002`
+        ]
+      };
+    default:
+      return {
+        title: `\u5148\u8DD1\u901A ${name} \u7684\u6700\u5C0F\u53EF\u7528\u6D41\u7A0B`,
+        body: [
+          `\u76EE\u6807\uFF1A\u4E0D\u8FFD\u6C42\u4E00\u6B21\u914D\u5168\uFF0C\u5148\u8BA9\u5B83\u66FF\u4F60\u5B8C\u6210\u4E00\u4EF6\u5C0F\u4E8B\u3002`,
+          `1. \u6253\u5F00\u8BBE\u7F6E\u9875\uFF0C\u53EA\u6539\u4E00\u4E2A\u6700\u5173\u952E\u7684\u9009\u9879\u3002`,
+          `2. \u7528\u4E00\u6761\u771F\u5B9E\u7B14\u8BB0/\u4E00\u4E2A\u771F\u5B9E\u4EFB\u52A1\u8BD5\u8FD0\u884C\u3002`,
+          `3. \u786E\u8BA4\u7ED3\u679C\u7B26\u5408\u9884\u671F\u540E\uFF0C\u518D\u9010\u6B65\u542F\u7528\u9AD8\u7EA7\u529F\u80FD\u3002`
+        ]
+      };
+  }
+}
+function renderSettingStep(step, item, pluginName) {
+  var _a;
+  const lines = [];
+  const current = item.current ? `\uFF08\u5F53\u524D\uFF1A${item.current}\uFF09` : "";
+  lines.push(
+    `**\u7B2C ${step} \u6B65 \xB7 ${item.label}**\uFF1A\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6 \u2192 ${pluginName} \u2192 \u9009\u9879 \u2192 ${item.label} \u2192 ${(_a = KIND_ACTION[item.kind]) != null ? _a : KIND_ACTION.unknown}${current}`
+  );
+  if (item.desc) lines.push(`- \u8BF4\u660E\uFF1A${item.desc}`);
+  if (item.options && item.options.length > 0) {
+    lines.push(`- \u53EF\u9009\u503C\uFF1A${item.options.join(" / ")}`);
+  }
+  if (!item.desc && !item.current) {
+    lines.push("- \u8BF4\u660E\uFF1A\u6309\u63D2\u4EF6\u8BBE\u7F6E\u9875\u91CC\u7684\u5B9E\u9645\u6587\u6848\u4E3A\u51C6\u3002");
+  }
+  return lines;
+}
 function buildTemplateGuideBody(facts) {
-  const { info, repo, readme, settings, related, category, vaultName } = facts;
+  const { info, repo, readme, settings, settingItems, settingsScraped, related, category, vaultName } = facts;
   const lines = [];
   const support = info.isDesktopOnly ? "\u4EC5\u684C\u9762\u7AEF" : "\u684C\u9762\u7AEF\u4E0E\u79FB\u52A8\u7AEF\u5747\u53EF";
   const state = info.enabled ? "\u5DF2\u542F\u7528" : "\u5DF2\u5B89\u88C5\u4F46\u672A\u542F\u7528";
+  const items = settingItems != null ? settingItems : [];
+  const sourceLabel = settingsScraped ? `\u6293\u53D6\u771F\u5B9E\u8BBE\u7F6E\u9875\uFF08${items.length} \u9879\uFF0C\u542B\u5F53\u524D\u72B6\u6001\uFF09` : items.length > 0 ? `\u4ECE\u63D2\u4EF6\u4EE3\u7801\u63D0\u53D6\uFF08${items.length} \u9879\uFF0C\u5F53\u524D\u503C\u6309 data.json \u5339\u914D\uFF09` : "\u672A\u8BFB\u53D6\u5230\u8BBE\u7F6E\u9879";
   lines.push(`# ${info.name} \u4F7F\u7528\u6307\u5357`);
   lines.push("");
   lines.push(
     `**\u7248\u672C** ${info.version} \uFF5C **\u4F5C\u8005** ${info.author || "\u672A\u6CE8\u660E"} \uFF5C **\u63D2\u4EF6 id** \`${info.id}\` \uFF5C **${support}**`
   );
   lines.push(`**\u5F53\u524D\u72B6\u6001** ${state} \uFF5C **\u6240\u5C5E\u5206\u7C7B** ${category.label} \uFF5C **\u6240\u5728\u5E93** ${vaultName}`);
+  lines.push(`**\u8BBE\u7F6E\u6765\u6E90** ${sourceLabel}`);
   lines.push("");
   lines.push("> [!info] \u4E00\u53E5\u8BDD\u5B9A\u4F4D");
   lines.push(`> ${info.description || "\uFF08\u63D2\u4EF6\u6E05\u5355\u672A\u63D0\u4F9B\u63CF\u8FF0\uFF0C\u8BF7\u4EE5\u5B98\u65B9 README \u4E3A\u51C6\uFF09"}`);
   lines.push("");
-  lines.push("## 1. \u5B83\u89E3\u51B3\u4EC0\u4E48\u95EE\u9898");
+  let step = 0;
+  const goal = goalFor(category, info.name);
+  lines.push(`## \u4E00\u3001\u76EE\u6807\u6848\u4F8B\uFF1A${goal.title}`);
   lines.push("");
-  if (info.description) {
-    lines.push(`${info.name} \u7684\u5B98\u65B9\u5B9A\u4F4D\u662F\uFF1A**${info.description}**`);
-  } else {
-    lines.push(`\u63D2\u4EF6\u6E05\u5355\u6CA1\u6709\u63D0\u4F9B ${info.name} \u7684\u63CF\u8FF0\uFF0C\u8BF7\u53C2\u8003\u4E0B\u65B9\u5B98\u65B9 README \u6458\u5F55\u3002`);
-  }
+  for (const line of goal.body) lines.push(line);
   lines.push("");
-  lines.push("| \u9879\u76EE | \u503C |");
-  lines.push("|------|-----|");
-  lines.push(`| \u63D2\u4EF6 id | \`${info.id}\` |`);
-  lines.push(`| \u5B89\u88C5\u76EE\u5F55 | \`${info.folderPath}\` |`);
-  lines.push(`| \u6700\u4F4E Obsidian \u7248\u672C | ${info.minAppVersion || "\u672A\u58F0\u660E"} |`);
-  lines.push(`| \u5E73\u53F0\u652F\u6301 | ${support} |`);
-  lines.push(`| \u5B98\u65B9\u4ED3\u5E93 | ${repo ? `https://github.com/${repo}` : info.authorUrl || "\u672A\u63D0\u4F9B"} |`);
+  lines.push("## \u4E8C\u3001\u5206\u6B65\u8BBE\u7F6E");
   lines.push("");
-  lines.push("## 2. \u5FEB\u901F\u4E0A\u624B");
+  step += 1;
+  lines.push(`**\u7B2C ${step} \u6B65 \xB7 \u786E\u8BA4\u63D2\u4EF6\u5DF2\u542F\u7528**\uFF1A\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6 \u2192 ${info.name} \u2192 \u5F00\u5173`);
+  lines.push(`- \u5F53\u524D\uFF1A${info.enabled ? "\u5DF2\u542F\u7528 \u2705" : "\u672A\u542F\u7528 \u2B1C\uFF08\u5148\u6253\u5F00\u5F00\u5173\uFF09"}`);
   lines.push("");
-  lines.push(`1. \u6253\u5F00\u300C\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6\u300D\uFF0C\u786E\u8BA4 **${info.name}** \u5904\u4E8E\u300C${state}\u300D\u72B6\u6001\u3002`);
-  if (info.commands.length > 0) {
-    lines.push(
-      `2. \u6309 \`Ctrl/Cmd + P\` \u6253\u5F00\u547D\u4EE4\u9762\u677F\uFF0C\u641C\u7D22\u300C${info.name}\u300D\uFF0C\u53EF\u4EE5\u770B\u5230 ${info.commands.length} \u4E2A\u53EF\u7528\u547D\u4EE4\uFF08\u89C1\u4E0B\u4E00\u8282\uFF09\u3002`
-    );
-  } else {
-    lines.push("2. \u8BE5\u63D2\u4EF6\u6CA1\u6709\u6CE8\u518C\u547D\u4EE4\uFF0C\u5165\u53E3\u901A\u5E38\u5728\u8BBE\u7F6E\u9875\u3001\u4FA7\u8FB9\u680F\u56FE\u6807\uFF0C\u6216\u7B14\u8BB0\u4E2D\u7684\u4EE3\u7801\u5757/\u89C6\u56FE\u91CC\u3002");
-  }
-  lines.push(
-    info.enabled ? "3. \u5148\u6253\u5F00\u63D2\u4EF6\u8BBE\u7F6E\u5B8C\u6210\u57FA\u7840\u914D\u7F6E\uFF0C\u518D\u6309\u4E0B\u9762\u7684\u7528\u6CD5\u793A\u4F8B\u8BD5\u4E00\u4E2A\u5C0F\u4EFB\u52A1\u3002" : "3. \u9700\u8981\u5148\u542F\u7528\u63D2\u4EF6\uFF0C\u518D\u6253\u5F00\u5176\u8BBE\u7F6E\u5B8C\u6210\u57FA\u7840\u914D\u7F6E\u3002"
-  );
+  step += 1;
+  lines.push(`**\u7B2C ${step} \u6B65 \xB7 \u6253\u5F00\u63D2\u4EF6\u8BBE\u7F6E\u9875**\uFF1A\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6 \u2192 ${info.name} \u2192 \u9F7F\u8F6E\u300C\u9009\u9879\u300D`);
+  lines.push("- \u5982\u679C\u8FD9\u91CC\u627E\u4E0D\u5230\u5165\u53E3\uFF0C\u7528\u547D\u4EE4\u9762\u677F\uFF08Ctrl/Cmd + P\uFF09\u641C\u7D22\u63D2\u4EF6\u540D\u6216\u5B83\u7684\u547D\u4EE4\u3002");
   lines.push("");
-  lines.push("## 3. \u547D\u4EE4\u4E0E\u5165\u53E3");
-  lines.push("");
-  if (info.commands.length > 0) {
-    lines.push("\u4EE5\u4E0B\u547D\u4EE4\u540D\u6765\u81EA Obsidian \u5B9E\u65F6\u547D\u4EE4\u8868\uFF0C\u53EF\u5728\u547D\u4EE4\u9762\u677F\u76F4\u63A5\u641C\u7D22\u6267\u884C\uFF1A");
+  if (items.length > 0) {
+    lines.push("\u4EE5\u4E0B\u8BBE\u7F6E\u9879\u540D\u79F0\u6765\u81EA\u63D2\u4EF6\u4EE3\u7801\u6216\u771F\u5B9E\u8BBE\u7F6E\u9875\uFF1B\u5982\u679C\u4F60\u7684\u7248\u672C\u6587\u6848\u4E0D\u540C\uFF0C\u4EE5\u5B9E\u9645\u754C\u9762\u4E3A\u51C6\u3002");
     lines.push("");
+    let group;
+    for (const item of items) {
+      if (item.group && item.group !== group) {
+        group = item.group;
+        lines.push(`### ${group}`);
+        lines.push("");
+      }
+      step += 1;
+      for (const line of renderSettingStep(step, item, info.name)) lines.push(line);
+      lines.push("");
+    }
+  } else {
+    lines.push("\u6CA1\u6709\u4ECE\u63D2\u4EF6\u4EE3\u7801\u4E2D\u63D0\u53D6\u5230\u8BBE\u7F6E\u9879\uFF08\u53EF\u80FD\u63D2\u4EF6\u6CA1\u6709\u8BBE\u7F6E\u754C\u9762\uFF0C\u6216\u7528\u4E86\u975E\u5E38\u89C4\u5199\u6CD5\uFF09\u3002");
+    lines.push("\u8BF7\u76F4\u63A5\u6253\u5F00\u8BBE\u7F6E\u9875\u9010\u9879\u68C0\u67E5\uFF1B\u672C\u6307\u5357\u7684\u5176\u4F59\u90E8\u5206\u4ECD\u7136\u9002\u7528\u3002");
+    lines.push("");
+  }
+  if (settings.length > 0) {
+    lines.push("### \u5DF2\u4FDD\u5B58\u7684\u914D\u7F6E\u503C\uFF08data.json\uFF09");
+    lines.push("");
+    lines.push("| \u8BBE\u7F6E\u952E | \u5F53\u524D\u503C |");
+    lines.push("|--------|--------|");
+    for (const fact of settings) {
+      lines.push(`| \`${fact.key}\` | ${fact.value.replace(/\|/g, "\\|")} |`);
+    }
+    lines.push("");
+    lines.push("> \u542B key / token / secret / password \u7684\u5B57\u6BB5\u5DF2\u8131\u654F\uFF0C\u4E0D\u4F1A\u5199\u5165\u660E\u6587\u3002");
+    lines.push("");
+  }
+  lines.push("## \u4E09\u3001\u547D\u4EE4\u901F\u67E5");
+  lines.push("");
+  if (info.commands.length > 0) {
+    lines.push("\u547D\u4EE4\u540D\u6765\u81EA Obsidian \u5B9E\u65F6\u547D\u4EE4\u8868\uFF0C\u53EF\u590D\u5236\u5230\u547D\u4EE4\u9762\u677F\u641C\u7D22\uFF1A");
+    lines.push("");
+    lines.push("| \u547D\u4EE4 | \u8BF4\u660E |");
+    lines.push("|------|------|");
     for (const command of info.commands) {
-      lines.push(`- \`${command}\``);
+      lines.push(`| \`${command.replace(/\|/g, "\\|")}\` | \u5728\u547D\u4EE4\u9762\u677F\u641C\u7D22\u8BE5\u540D\u79F0\u6267\u884C |`);
     }
     lines.push("");
     lines.push("> \u5FEB\u6377\u952E\u9700\u8981\u5728\u300C\u8BBE\u7F6E \u2192 \u5FEB\u6377\u952E\u300D\u91CC\u81EA\u884C\u7ED1\u5B9A\uFF0C\u672C\u6587\u4E0D\u731C\u6D4B\u9ED8\u8BA4\u5FEB\u6377\u952E\u3002");
   } else {
-    lines.push("\u5F53\u524D\u6CA1\u6709\u68C0\u6D4B\u5230\u8BE5\u63D2\u4EF6\u6CE8\u518C\u7684\u547D\u4EE4\u3002\u8BF4\u660E\u5B83\u7684\u5165\u53E3\u4E0D\u662F\u547D\u4EE4\u9762\u677F\uFF0C\u53EF\u80FD\u662F\uFF1A");
-    lines.push("");
-    lines.push("- \u8BBE\u7F6E\u9875\u91CC\u7684\u5F00\u5173\u4E0E\u914D\u7F6E\u9879");
-    lines.push("- \u4FA7\u8FB9\u680F\u56FE\u6807\uFF08Ribbon\uFF09\u6216\u53F3\u4FA7\u9762\u677F\u89C6\u56FE");
-    lines.push("- \u7B14\u8BB0\u6B63\u6587\u4E2D\u7684\u4EE3\u7801\u5757\u3001\u5185\u8054\u5B57\u6BB5\u6216\u7279\u6B8A\u6587\u4EF6\u7C7B\u578B");
+    lines.push("\u5F53\u524D\u6CA1\u6709\u68C0\u6D4B\u5230\u8BE5\u63D2\u4EF6\u6CE8\u518C\u7684\u547D\u4EE4\uFF0C\u5165\u53E3\u901A\u5E38\u662F\u8BBE\u7F6E\u9875\u3001\u4FA7\u8FB9\u680F\u56FE\u6807\u6216\u7B14\u8BB0\u5185\u7684\u4EE3\u7801\u5757\u3002");
   }
   lines.push("");
-  lines.push("## 4. \u8BBE\u7F6E\u9879");
+  lines.push("## \u56DB\u3001\u5E38\u89C1\u95EE\u9898\u4E0E\u5751");
   lines.push("");
-  if (settings.length > 0) {
-    lines.push("\u4E0B\u8868\u952E\u540D\u6765\u81EA\u63D2\u4EF6\u81EA\u5DF1\u7684 `data.json`\uFF08\u5DF2\u4FDD\u5B58\u7684\u914D\u7F6E\uFF09\uFF1A");
-    lines.push("");
-    lines.push("| \u8BBE\u7F6E\u952E | \u5F53\u524D\u503C |");
-    lines.push("|--------|--------|");
-    for (const item of settings) {
-      lines.push(`| \`${item.key}\` | ${item.value.replace(/\|/g, "\\|")} |`);
-    }
-    lines.push("");
-    lines.push("> \u542B key / token / secret / password \u7684\u5B57\u6BB5\u5DF2\u8131\u654F\uFF0C\u4E0D\u4F1A\u5199\u5165\u660E\u6587\u3002");
-  } else {
-    lines.push("\u8BE5\u63D2\u4EF6\u8FD8\u6CA1\u6709\u4FDD\u5B58\u8FC7\u81EA\u5B9A\u4E49\u914D\u7F6E\uFF08`data.json` \u4E0D\u5B58\u5728\u6216\u4E3A\u7A7A\uFF09\uFF0C\u6240\u6709\u8BBE\u7F6E\u9879\u90FD\u662F\u9ED8\u8BA4\u503C\u3002");
-    lines.push("\u6253\u5F00\u300C\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6 \u2192 \u9009\u9879\u300D\u5373\u53EF\u770B\u5230\u63D2\u4EF6\u7684\u5B8C\u6574\u8BBE\u7F6E\u9875\u3002");
-  }
-  lines.push("");
-  lines.push("## 5. \u5E38\u7528\u7528\u6CD5");
-  lines.push("");
-  for (const hint of categoryHints(category)) {
-    lines.push(`- ${hint}`);
-  }
-  lines.push("");
-  if (category.key === "task") {
-    lines.push("\u5C1D\u8BD5\u987A\u5E8F\uFF1A\u5148\u5EFA\u4E00\u4E2A\u6536\u96C6\u7BB1 \u2192 \u518D\u5EFA\u4E00\u4E2A\u672C\u5468\u6E05\u5355 \u2192 \u6700\u540E\u518D\u8003\u8651\u89C6\u56FE\u4E0E\u7EDF\u8BA1\u3002");
-  } else if (category.key === "query") {
-    lines.push("\u5C1D\u8BD5\u987A\u5E8F\uFF1A\u5148\u7ED9 5 \u7BC7\u7B14\u8BB0\u8865\u5C5E\u6027 \u2192 \u5199\u4E00\u4E2A\u6700\u7B80\u5355\u7684 `LIST` \u67E5\u8BE2 \u2192 \u518D\u9010\u6B65\u52A0 `WHERE` \u548C `SORT`\u3002");
-  } else if (category.key === "ai") {
-    lines.push("\u5C1D\u8BD5\u987A\u5E8F\uFF1A\u5148\u53EA\u8BFB\u63D0\u95EE \u2192 \u518D\u8BA9\u5B83\u6539\u4E00\u7BC7\u526F\u672C \u2192 \u6700\u540E\u624D\u5141\u8BB8\u6279\u91CF\u5199\u5165\u3002");
-  } else {
-    lines.push("\u5EFA\u8BAE\u5148\u7528\u4E00\u4E2A\u5C0F\u6587\u4EF6\u5939\u6216\u4E00\u7BC7\u6D4B\u8BD5\u7B14\u8BB0\u8DD1\u901A\u5B8C\u6574\u6D41\u7A0B\uFF0C\u518D\u5E94\u7528\u5230\u5168\u5E93\u3002");
-  }
-  lines.push("");
-  lines.push("## 6. \u6CE8\u610F\u4E8B\u9879");
-  lines.push("");
-  if (info.isDesktopOnly) {
-    lines.push("- \u8BE5\u63D2\u4EF6\u6807\u8BB0\u4E3A**\u4EC5\u684C\u9762\u7AEF**\uFF0C\u624B\u673A/\u5E73\u677F\u65E0\u6CD5\u4F7F\u7528\u3002");
-  }
+  lines.push("- **\u542F\u7528\u540E\u6CA1\u53CD\u5E94**\uFF1A\u5148\u91CD\u542F Obsidian\uFF0C\u518D\u786E\u8BA4\u7248\u672C\u6EE1\u8DB3\u4E0B\u9762\u7684\u6700\u4F4E\u8981\u6C42\u3002");
+  lines.push("- **\u8BBE\u7F6E\u6539\u4E86\u4E0D\u751F\u6548**\uFF1A\u591A\u6570\u63D2\u4EF6\u5373\u65F6\u751F\u6548\uFF0C\u5C11\u6570\u9700\u8981\u91CD\u5F00\u8BBE\u7F6E\u9875\u6216\u91CD\u8F7D\u7A97\u53E3\u3002");
+  lines.push("- **\u914D\u7F6E\u5B58\u5728\u54EA**\uFF1A`.obsidian/plugins/" + info.id + "/data.json`\uFF1B\u8FC1\u79FB\u8BBE\u5907\u524D\u6574\u4F53\u5907\u4EFD `.obsidian`\u3002");
   if (info.minAppVersion) {
-    lines.push(`- \u9700\u8981 Obsidian **${info.minAppVersion} \u53CA\u4EE5\u4E0A**\uFF1B\u5347\u7EA7 Obsidian \u524D\u5148\u786E\u8BA4\u63D2\u4EF6\u662F\u5426\u8DDF\u8FDB\u3002`);
+    lines.push(`- **\u7248\u672C\u8981\u6C42**\uFF1A\u9700\u8981 Obsidian ${info.minAppVersion} \u53CA\u4EE5\u4E0A\u3002`);
   }
-  lines.push("- \u63D2\u4EF6\u5347\u7EA7\u540E\u5982\u679C\u884C\u4E3A\u5F02\u5E38\uFF0C\u5148\u91CD\u542F Obsidian\uFF0C\u518D\u68C0\u67E5\u8BBE\u7F6E\u662F\u5426\u88AB\u91CD\u7F6E\u3002");
-  lines.push("- \u672C\u6307\u5357\u7531\u7A0B\u5E8F\u6839\u636E\u63D2\u4EF6\u5143\u6570\u636E\u81EA\u52A8\u6574\u7406\uFF0C\u5177\u4F53\u529F\u80FD\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E0E\u5B98\u65B9\u8BF4\u660E\u4E3A\u51C6\u3002");
+  if (info.isDesktopOnly) {
+    lines.push("- **\u5E73\u53F0\u9650\u5236**\uFF1A\u8BE5\u63D2\u4EF6\u4EC5\u684C\u9762\u7AEF\u53EF\u7528\uFF0C\u624B\u673A/\u5E73\u677F\u65E0\u6CD5\u4F7F\u7528\u3002");
+  }
+  lines.push("- \u672C\u6307\u5357\u7531\u7A0B\u5E8F\u6839\u636E\u63D2\u4EF6\u4EE3\u7801/\u8BBE\u7F6E\u9875\u81EA\u52A8\u6574\u7406\uFF1B\u529F\u80FD\u7EC6\u8282\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E0E\u5B98\u65B9\u8BF4\u660E\u4E3A\u51C6\u3002");
   lines.push("");
-  lines.push("## 7. \u4E0E\u672C\u5E93\u5176\u4ED6\u63D2\u4EF6\u7684\u914D\u5408");
+  lines.push("## \u4E94\u3001\u4E0E\u672C\u5E93\u5176\u4ED6\u63D2\u4EF6\u7684\u914D\u5408");
   lines.push("");
   if (related.length > 0) {
     lines.push(`\u5F53\u524D\u5E93\u91CC\u540C\u65F6\u542F\u7528\u7684\u63D2\u4EF6\u6709\uFF1A${related.join("\u3001")}\u3002`);
   }
-  lines.push("\u5E38\u89C1\u7684\u914D\u5408\u65B9\u5F0F\u662F\uFF1A\u8BA9\u8FD9\u4E2A\u63D2\u4EF6\u8D1F\u8D23\u5B83\u6700\u64C5\u957F\u7684\u4E00\u4EF6\u4E8B\uFF0C\u628A\u7ED3\u679C\u4EA4\u7ED9 Dataview/\u770B\u677F/\u65E5\u8BB0\u7B49\u63D2\u4EF6\u5C55\u793A\uFF0C\u907F\u514D\u4E24\u4E2A\u63D2\u4EF6\u62A2\u540C\u4E00\u7C7B\u6587\u4EF6\u3002");
+  lines.push("\u5EFA\u8BAE\u8BA9\u5B83\u53EA\u8D1F\u8D23\u6700\u64C5\u957F\u7684\u4E00\u4EF6\u4E8B\uFF0C\u628A\u7ED3\u679C\u4EA4\u7ED9 Dataview/\u770B\u677F/\u65E5\u8BB0\u7B49\u5C55\u793A\uFF0C\u907F\u514D\u4E24\u4E2A\u63D2\u4EF6\u62A2\u540C\u4E00\u7C7B\u6587\u4EF6\u3002");
   lines.push("");
   if (readme) {
-    lines.push("## 8. \u5B98\u65B9\u8BF4\u660E\u6458\u5F55\uFF08README\uFF09");
+    lines.push("## \u516D\u3001\u5B98\u65B9\u8BF4\u660E\u6458\u5F55\uFF08README\uFF09");
     lines.push("");
     lines.push("> [!note]- \u70B9\u51FB\u5C55\u5F00\u539F\u6587\u6458\u5F55");
     for (const line of cleanReadme(readme, 2500)) {
@@ -770,7 +854,7 @@ function buildTemplateGuideBody(facts) {
     }
     lines.push("");
   }
-  lines.push(`## ${readme ? 9 : 8}. \u5B98\u65B9\u8D44\u6E90`);
+  lines.push(`## ${readme ? "\u4E03" : "\u516D"}\u3001\u5B98\u65B9\u8D44\u6E90`);
   lines.push("");
   if (repo) {
     lines.push(`- [\u5B98\u65B9\u4ED3\u5E93](https://github.com/${repo})`);
@@ -781,12 +865,17 @@ function buildTemplateGuideBody(facts) {
   }
   lines.push(`- [\u63D2\u4EF6\u793E\u533A\u9875\u9762](https://obsidian.md/plugins?id=${encodeURIComponent(info.id)})`);
   lines.push("");
-  const infoIndex = readme ? 10 : 9;
-  lines.push(`## ${infoIndex}. \u6307\u5357\u4FE1\u606F`);
+  const infoIndex = readme ? "\u516B" : "\u4E03";
+  lines.push(`## ${infoIndex}\u3001\u6307\u5357\u4FE1\u606F`);
   lines.push("");
-  lines.push(`- \u751F\u6210\u65B9\u5F0F\uFF1A\u6A21\u677F\u81EA\u52A8\u751F\u6210\uFF08\u672A\u542F\u7528 AI \u65F6\uFF09\uFF0C\u8D44\u6599\u6765\u81EA manifest\u3001\u5B9E\u65F6\u547D\u4EE4\u8868\u3001data.json \u4E0E README`);
-  lines.push(`- \u4FEE\u6539\u672C\u6587\u4EF6\u540E\u518D\u6B21\u751F\u6210\uFF0C\u4F1A\u6309\u8BBE\u7F6E\u91CC\u7684\u300C\u8DF3\u8FC7 / \u5907\u4EFD\u540E\u8986\u76D6 / \u8986\u76D6\u300D\u7B56\u7565\u5904\u7406`);
-  lines.push("- \u60F3\u83B7\u5F97\u66F4\u8BE6\u7EC6\u7684\u4E2D\u6587\u8BF4\u660E\uFF1A\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u586B\u5165 OpenAI \u517C\u5BB9\u7684 API Key\uFF0C\u91CD\u65B0\u751F\u6210\u5373\u53EF");
+  lines.push(`- \u8BBE\u7F6E\u6765\u6E90\uFF1A${sourceLabel}`);
+  lines.push(`- \u5185\u5BB9\u6765\u6E90\uFF1Amanifest\u3001\u5B9E\u65F6\u547D\u4EE4\u8868\u3001data.json\u3001\u63D2\u4EF6\u4EE3\u7801/\u8BBE\u7F6E\u9875${readme ? "\u3001README" : ""}`);
+  lines.push("- \u4FEE\u6539\u672C\u6587\u4EF6\u540E\u518D\u6B21\u751F\u6210\uFF0C\u4F1A\u6309\u8BBE\u7F6E\u91CC\u7684\u300C\u8DF3\u8FC7 / \u5907\u4EFD\u540E\u8986\u76D6 / \u8986\u76D6\u300D\u7B56\u7565\u5904\u7406");
+  if (!settingsScraped) {
+    lines.push("- \u60F3\u8981\u300C\u8BBE\u7F6E\u9875\u6BCF\u4E00\u6309\u94AE + \u5F53\u524D\u72B6\u6001\u300D\uFF1A\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u5F00\u542F\u300C\u624B\u52A8\u751F\u6210\u65F6\u6293\u53D6\u8BBE\u7F6E\u9875\u300D\uFF0C\u518D\u70B9\u300C\u91CD\u751F\u6210\u300D");
+  } else {
+    lines.push("- \u672C\u6307\u5357\u7684\u8BBE\u7F6E\u9879\u4E0E\u5F53\u524D\u72B6\u6001\u6765\u81EA\u771F\u5B9E\u8BBE\u7F6E\u9875\u6293\u53D6\uFF1B\u63D2\u4EF6\u5347\u7EA7\u540E\u5EFA\u8BAE\u91CD\u65B0\u751F\u6210\u4E00\u6B21");
+  }
   lines.push("");
   return lines.join("\n");
 }
@@ -795,12 +884,10 @@ function buildTemplateGuideBody(facts) {
 var import_obsidian4 = require("obsidian");
 var REQUIRED_HEADINGS = [
   "\u4E00\u53E5\u8BDD\u5B9A\u4F4D",
-  "\u5B83\u89E3\u51B3\u4EC0\u4E48\u95EE\u9898",
-  "\u5FEB\u901F\u4E0A\u624B",
-  "\u547D\u4EE4\u4E0E\u5165\u53E3",
-  "\u8BBE\u7F6E\u9879",
-  "\u5E38\u7528\u7528\u6CD5",
-  "\u6CE8\u610F\u4E8B\u9879",
+  "\u76EE\u6807\u6848\u4F8B",
+  "\u5206\u6B65\u8BBE\u7F6E",
+  "\u547D\u4EE4\u901F\u67E5",
+  "\u5E38\u89C1\u95EE\u9898",
   "\u4E0E\u672C\u5E93\u5176\u4ED6\u63D2\u4EF6\u7684\u914D\u5408",
   "\u5B98\u65B9\u8D44\u6E90"
 ];
@@ -810,7 +897,7 @@ function endpoint(baseUrl) {
   return `${base}/chat/completions`;
 }
 function buildMessages(facts) {
-  const { info, repo, readme, settings, related, category, vaultName } = facts;
+  const { info, repo, readme, settings, settingItems, settingsScraped, related, category, vaultName } = facts;
   const factsJson = {
     \u63D2\u4EF6\u540D: info.name,
     \u63D2\u4EF6id: info.id,
@@ -823,18 +910,30 @@ function buildMessages(facts) {
     \u5B98\u65B9\u4ED3\u5E93: repo ? `https://github.com/${repo}` : null,
     \u547D\u4EE4\u5217\u8868: info.commands,
     \u5DF2\u4FDD\u5B58\u8BBE\u7F6E: settings,
+    \u8BBE\u7F6E\u9879: settingItems.map((item) => {
+      var _a, _b, _c;
+      return {
+        \u540D\u79F0: item.label,
+        \u8BF4\u660E: (_a = item.desc) != null ? _a : null,
+        \u63A7\u4EF6: item.kind,
+        \u5F53\u524D\u503C: (_b = item.current) != null ? _b : null,
+        \u53EF\u9009\u9879: (_c = item.options) != null ? _c : null,
+        \u6765\u6E90: item.source
+      };
+    }),
+    \u8BBE\u7F6E\u6765\u6E90: settingsScraped ? "\u771F\u5B9E\u8BBE\u7F6E\u9875\u6293\u53D6" : "\u63D2\u4EF6\u4EE3\u7801\u63D0\u53D6\uFF08\u5F53\u524D\u503C\u6765\u81EA data.json\uFF09",
     \u5206\u7C7B: category.label,
     \u6240\u5728\u5E93: vaultName,
     \u672C\u5E93\u5176\u4ED6\u5DF2\u542F\u7528\u63D2\u4EF6: related
   };
-  const system = "\u4F60\u662F\u4E00\u4F4D Obsidian \u63D2\u4EF6\u6587\u6863\u4F5C\u8005\uFF0C\u64C5\u957F\u5199\u7B80\u6D01\u3001\u53EF\u64CD\u4F5C\u7684\u4E2D\u6587\u4F7F\u7528\u6307\u5357\u3002\n\u786C\u6027\u89C4\u5219\uFF1A\n1. \u53EA\u80FD\u4F9D\u636E\u7528\u6237\u63D0\u4F9B\u7684\u4E8B\u5B9E\u5199\u4F5C\uFF0C\u4E0D\u5F97\u7F16\u9020\u529F\u80FD\u3001\u5FEB\u6377\u952E\u3001\u8BBE\u7F6E\u9879\u3001\u547D\u4EE4\u3002\n2. \u4E0D\u786E\u5B9A\u7684\u5185\u5BB9\u5199\u300C\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E3A\u51C6\u300D\uFF0C\u4E0D\u8981\u865A\u6784\u3002\n3. \u8F93\u51FA\u7EAF Markdown \u6B63\u6587\uFF0C\u4E0D\u8981 YAML frontmatter\uFF0C\u4E0D\u8981\u7528```\u5305\u88F9\u6574\u7BC7\u3002\n4. \u5FC5\u987B\u4F7F\u7528\u8FD9\u4E9B\u4E8C\u7EA7\u6807\u9898\uFF08\u53EF\u52A0\u7F16\u53F7\uFF09\uFF1A\u4E00\u53E5\u8BDD\u5B9A\u4F4D\u3001\u5B83\u89E3\u51B3\u4EC0\u4E48\u95EE\u9898\u3001\u5FEB\u901F\u4E0A\u624B\u3001\u547D\u4EE4\u4E0E\u5165\u53E3\u3001\u8BBE\u7F6E\u9879\u3001\u5E38\u7528\u7528\u6CD5\u3001\u6CE8\u610F\u4E8B\u9879\u3001\u4E0E\u672C\u5E93\u5176\u4ED6\u63D2\u4EF6\u7684\u914D\u5408\u3001\u5B98\u65B9\u8D44\u6E90\u3002\n5. \u603B\u957F\u5EA6 600\uFF5E1200 \u5B57\uFF0C\u591A\u7528\u5217\u8868\u548C\u8868\u683C\uFF0C\u4E0D\u5199\u7A7A\u8BDD\u5957\u8BDD\u3002\n6. \u5F00\u5934\u5199 `# {\u63D2\u4EF6\u540D} \u4F7F\u7528\u6307\u5357`\u3002";
+  const system = "\u4F60\u662F\u4E00\u4F4D Obsidian \u63D2\u4EF6\u6587\u6863\u4F5C\u8005\uFF0C\u64C5\u957F\u628A\u63D2\u4EF6\u8BBE\u7F6E\u9875\u5199\u6210\u4E00\u6B65\u6B65\u80FD\u7167\u505A\u7684\u4E2D\u6587\u6559\u7A0B\u3002\n\u786C\u6027\u89C4\u5219\uFF1A\n1. \u53EA\u80FD\u4F7F\u7528\u7ED9\u5B9A\u4E8B\u5B9E\u4E2D\u7684\u8BBE\u7F6E\u9879\u540D\u79F0\u3001\u547D\u4EE4\u3001\u9009\u9879\u4E0E\u5F53\u524D\u503C\uFF0C\u4E0D\u5F97\u7F16\u9020\u8BBE\u7F6E\u9879\u3001\u6309\u94AE\u3001\u5FEB\u6377\u952E\u6216\u8DEF\u5F84\u3002\n2. \u6BCF\u4E00\u6B65\u5FC5\u987B\u5199\u6210\uFF1A`**\u7B2C N \u6B65 \xB7 \u6807\u9898**\uFF1A\u8BBE\u7F6E \u2192 \u7B2C\u4E09\u65B9\u63D2\u4EF6 \u2192 {\u63D2\u4EF6\u540D} \u2192 \u9009\u9879 \u2192 {\u63A7\u4EF6\u540D} \u2192 \u64CD\u4F5C\uFF08\u5F53\u524D\uFF1A\u2026\uFF09`\u3002\n3. \u4E0D\u786E\u5B9A\u7684\u5199\u300C\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E3A\u51C6\u300D\u3002\n4. \u8F93\u51FA\u7EAF Markdown \u6B63\u6587\uFF0C\u4E0D\u8981 frontmatter\uFF0C\u4E0D\u8981\u7528```\u5305\u4F4F\u6574\u7BC7\u3002\n5. \u5FC5\u987B\u4F7F\u7528\u8FD9\u4E9B\u4E8C\u7EA7\u6807\u9898\uFF08\u53EF\u52A0\u7F16\u53F7\uFF09\uFF1A\u4E00\u53E5\u8BDD\u5B9A\u4F4D\u3001\u76EE\u6807\u6848\u4F8B\u3001\u5206\u6B65\u8BBE\u7F6E\u3001\u547D\u4EE4\u901F\u67E5\u3001\u5E38\u89C1\u95EE\u9898\u3001\u4E0E\u672C\u5E93\u5176\u4ED6\u63D2\u4EF6\u7684\u914D\u5408\u3001\u5B98\u65B9\u8D44\u6E90\u3002\n6. \u5F00\u5934\u5148\u7ED9\u4E00\u4E2A\u5177\u4F53\u76EE\u6807\u6848\u4F8B\uFF0C\u518D\u7ED9\u5206\u6B65\u64CD\u4F5C\uFF1B\u603B\u957F\u5EA6 800\uFF5E1600 \u5B57\u3002\n7. \u5F00\u5934\u5199 `# {\u63D2\u4EF6\u540D} \u4F7F\u7528\u6307\u5357`\u3002";
   const user = [
     "\u4EE5\u4E0B\u662F\u63D2\u4EF6\u4E8B\u5B9E\uFF08JSON\uFF09\uFF1A",
     JSON.stringify(factsJson, null, 2),
     readme ? `
 \u5B98\u65B9 README \u8282\u9009\uFF08\u53EF\u80FD\u4E3A\u82F1\u6587\u539F\u6587\uFF0C\u53EF\u7FFB\u8BD1\u6982\u62EC\uFF0C\u4E0D\u5F97\u6269\u5199\u4E0D\u5B58\u5728\u7684\u529F\u80FD\uFF09\uFF1A
-${readme.slice(0, 6e3)}` : "\n\uFF08\u672A\u83B7\u53D6\u5230 README\uFF0C\u8BF7\u53EA\u4F9D\u636E\u4E0A\u9762\u7684\u5143\u6570\u636E\u5199\u4F5C\uFF0C\u529F\u80FD\u7EC6\u8282\u5199\u300C\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E3A\u51C6\u300D\u3002\uFF09",
-    "\n\u8BF7\u8F93\u51FA\u6307\u5357\u6B63\u6587\u3002"
+${readme.slice(0, 6e3)}` : "\n\uFF08\u672A\u83B7\u53D6\u5230 README\uFF0C\u53EA\u4F9D\u636E\u4E0A\u9762\u7684\u5143\u6570\u636E\u5199\u4F5C\uFF0C\u529F\u80FD\u7EC6\u8282\u5199\u300C\u4EE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\u4E3A\u51C6\u300D\u3002\uFF09",
+    "\n\u8BF7\u6309\u89C4\u5219\u8F93\u51FA\u6307\u5357\u6B63\u6587\uFF0C\u91CD\u70B9\u628A\u300C\u5206\u6B65\u8BBE\u7F6E\u300D\u5199\u6210\u80FD\u7167\u7740\u70B9\u7684\u4E00\u6B65\u4E00\u6B65\u3002"
   ].join("\n");
   return [
     { role: "system", content: system },
@@ -873,8 +972,158 @@ async function generateWithAI(facts, ai) {
   const headingCount = REQUIRED_HEADINGS.filter(
     (heading) => new RegExp(`^##+\\s*.*${heading}`, "m").test(content)
   ).length;
-  if (headingCount < 6) return null;
+  if (headingCount < 5) return null;
   return content;
+}
+
+// src/settings-extract.ts
+var NAME_RE = /\.setName\(\s*(["'`])([^"'`]{1,120})\1\s*\)/g;
+var DESC_RE = /\.setDesc\(\s*(["'`])([^"'`]{1,300})\1\s*\)/;
+var OPTION_RE = /\.addOption\(\s*(["'`])([^"'`]{1,120})\1\s*,\s*(["'`])([^"'`]{1,120})\3\s*\)/g;
+var KIND_PATTERNS = [
+  { kind: "toggle", re: /\.addToggle\(/ },
+  { kind: "dropdown", re: /\.addDropdown\(/ },
+  { kind: "slider", re: /\.addSlider\(/ },
+  { kind: "text", re: /\.addText(?:Area)?\(/ },
+  { kind: "button", re: /\.addButton\(/ }
+];
+function clean(text) {
+  return text.replace(/\\n/g, " ").replace(/\\t/g, " ").replace(/\s+/g, " ").trim();
+}
+function detectKind(windowText) {
+  var _a;
+  let best = null;
+  for (const pattern of KIND_PATTERNS) {
+    const match = windowText.match(pattern.re);
+    if (!match || match.index === void 0) continue;
+    if (!best || match.index < best.index) best = { kind: pattern.kind, index: match.index };
+  }
+  return (_a = best == null ? void 0 : best.kind) != null ? _a : "unknown";
+}
+function parseSettingsFromCode(code, limit = 120) {
+  var _a, _b, _c;
+  const matches = Array.from(code.matchAll(NAME_RE));
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = (_a = match.index) != null ? _a : 0;
+    const nextStart = (_c = (_b = matches[index + 1]) == null ? void 0 : _b.index) != null ? _c : Math.min(code.length, start + 3e3);
+    const windowText = code.slice(start, Math.min(nextStart, start + 3e3));
+    const label = clean(match[2]);
+    if (!label || label.length < 2 || seen.has(label)) continue;
+    const descMatch = windowText.match(DESC_RE);
+    const kind = detectKind(windowText);
+    const options = kind === "dropdown" ? Array.from(windowText.matchAll(OPTION_RE)).map((option) => clean(option[4])).filter(Boolean).slice(0, 20) : void 0;
+    seen.add(label);
+    items.push({
+      label,
+      desc: descMatch ? clean(descMatch[2]) : void 0,
+      kind,
+      options: options && options.length > 0 ? options : void 0,
+      source: "code"
+    });
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+// src/settings-scrape.ts
+function sleep2(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+async function waitFor(probe, timeoutMs, intervalMs = 100) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const value = probe();
+      if (value) return value;
+    } catch (e) {
+    }
+    await sleep2(intervalMs);
+  }
+  return null;
+}
+function currentOfControl(el) {
+  var _a, _b, _c;
+  const toggle = el.querySelector(".checkbox-container");
+  if (toggle) {
+    return { kind: "toggle", current: toggle.classList.contains("is-enabled") ? "\u5DF2\u5F00\u542F \u2705" : "\u5DF2\u5173\u95ED \u2B1C" };
+  }
+  const select = el.querySelector("select");
+  if (select) {
+    const option = (_a = select.selectedOptions) == null ? void 0 : _a[0];
+    return { kind: "dropdown", current: ((_b = option == null ? void 0 : option.textContent) == null ? void 0 : _b.trim()) || select.value || "\u672A\u9009\u62E9" };
+  }
+  const slider = el.querySelector("input[type=range]");
+  if (slider) {
+    return { kind: "slider", current: slider.value };
+  }
+  const text = el.querySelector(
+    "input[type=text], input[type=number], input[type=password], textarea"
+  );
+  if (text) {
+    const value = (_c = text.value) != null ? _c : "";
+    return { kind: "text", current: value.length > 40 ? `${value.slice(0, 20)}\u2026\uFF08${value.length} \u5B57\u7B26\uFF09` : value || "\u7A7A" };
+  }
+  if (el.querySelector("button")) {
+    return { kind: "button", current: "" };
+  }
+  return { kind: "unknown", current: "" };
+}
+function parseSettingsDom(root) {
+  const items = [];
+  let group = "";
+  root.querySelectorAll(".setting-item").forEach((el) => {
+    var _a, _b, _c, _d, _e, _f;
+    const name = (_c = (_b = (_a = el.querySelector(".setting-item-name")) == null ? void 0 : _a.textContent) == null ? void 0 : _b.trim()) != null ? _c : "";
+    if (el.classList.contains("setting-item-heading")) {
+      if (name) group = name;
+      return;
+    }
+    if (!name) return;
+    const desc = (_f = (_e = (_d = el.querySelector(".setting-item-description")) == null ? void 0 : _d.textContent) == null ? void 0 : _e.trim()) != null ? _f : "";
+    const { kind, current } = currentOfControl(el);
+    items.push({
+      label: name,
+      desc: desc || void 0,
+      kind,
+      current: current || void 0,
+      group: group || void 0,
+      source: "scrape"
+    });
+  });
+  return items;
+}
+async function scrapeSettingsTab(app, pluginId) {
+  var _a, _b;
+  if (typeof document === "undefined") return [];
+  const setting = app.setting;
+  if (!setting || typeof setting.openTabById !== "function") return [];
+  let opened = false;
+  try {
+    (_a = setting.open) == null ? void 0 : _a.call(setting);
+    setting.openTabById(pluginId);
+    opened = true;
+    const container = await waitFor(
+      () => document.querySelector(".vertical-tab-content"),
+      2e3
+    );
+    if (!container) return [];
+    await waitFor(() => container.querySelector(".setting-item") ? true : null, 3e3);
+    await sleep2(200);
+    return parseSettingsDom(container);
+  } catch (error) {
+    console.warn("[plugin-catalog-guide] \u6293\u53D6\u8BBE\u7F6E\u9875\u5931\u8D25", error);
+    return [];
+  } finally {
+    if (opened) {
+      try {
+        (_b = setting.close) == null ? void 0 : _b.call(setting);
+      } catch (e) {
+      }
+    }
+  }
 }
 
 // src/guide-generator.ts
@@ -919,12 +1168,15 @@ async function loadCommunityIndex() {
   communityCache = { at: Date.now(), map };
   return map;
 }
+function normalizeKey(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 var GuideGenerator = class {
   constructor(app, getSettings) {
     this.app = app;
     this.getSettings = getSettings;
   }
-  async collect(info, snapshot) {
+  async collect(info, snapshot, options = {}) {
     var _a, _b;
     const settings = this.getSettings();
     let repo = null;
@@ -940,11 +1192,23 @@ var GuideGenerator = class {
     if (settings.fetchReadme && repo) {
       readme = await this.fetchReadme(repo);
     }
+    let settingItems = await this.collectCodeSettings(info);
+    let settingsScraped = false;
+    if (options.manual && settings.scrapeSettingsOnManual && info.enabled) {
+      const live = await scrapeSettingsTab(this.app, info.id);
+      if (live.length > 0) {
+        settingItems = live;
+        settingsScraped = true;
+      }
+    }
+    settingItems = this.attachCurrentValues(settingItems, settingFacts);
     return {
       info,
       repo,
       readme,
       settings: settingFacts,
+      settingItems,
+      settingsScraped,
       related: snapshot.plugins.filter((item) => item.enabled && item.id !== info.id && item.id !== "plugin-catalog-guide").slice(0, 10).map((item) => item.name),
       category: classify(info),
       vaultName: this.app.vault.getName(),
@@ -957,7 +1221,7 @@ var GuideGenerator = class {
       if (!await this.app.vault.adapter.exists(path)) return [];
       const parsed = JSON.parse(await this.app.vault.adapter.read(path));
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
-      return Object.entries(parsed).slice(0, 40).map(([key, value]) => ({
+      return Object.entries(parsed).slice(0, 60).map(([key, value]) => ({
         key,
         value: isSecretKey(key) ? "\u5DF2\u914D\u7F6E\uFF08\u5DF2\u8131\u654F\uFF09" : describeSettingValue(value),
         secret: isSecretKey(key)
@@ -965,6 +1229,47 @@ var GuideGenerator = class {
     } catch (e) {
       return [];
     }
+  }
+  async collectCodeSettings(info) {
+    const path = `${info.folderPath}/main.js`;
+    try {
+      if (!await this.app.vault.adapter.exists(path)) return [];
+      const code = await this.app.vault.adapter.read(path);
+      if (!code || code.length < 200) return [];
+      return parseSettingsFromCode(code.slice(0, 3e6));
+    } catch (e) {
+      return [];
+    }
+  }
+  /** 把 data.json 里的值按“标签 ↔ 键名”相似度贴到代码提取的设置项上 */
+  attachCurrentValues(items, facts) {
+    if (facts.length === 0) return items;
+    const keys = facts.map((fact) => fact.key);
+    return items.map((item) => {
+      if (item.current) return item;
+      const normalized = normalizeKey(item.label);
+      if (!normalized) return item;
+      let bestKey = null;
+      let bestScore = 0;
+      for (const key of keys) {
+        const candidate = normalizeKey(key);
+        if (!candidate) continue;
+        if (candidate === normalized) {
+          bestKey = key;
+          break;
+        }
+        if (candidate.includes(normalized) || normalized.includes(candidate)) {
+          const score = Math.min(candidate.length, normalized.length);
+          if (score > bestScore) {
+            bestScore = score;
+            bestKey = key;
+          }
+        }
+      }
+      if (!bestKey) return item;
+      const fact = facts.find((entry) => entry.key === bestKey);
+      return fact ? { ...item, current: fact.value } : item;
+    });
   }
   async fetchReadme(repo) {
     if (Date.now() < readmeBlockedUntil) return null;
@@ -985,8 +1290,8 @@ var GuideGenerator = class {
     }
     return null;
   }
-  async build(info, snapshot) {
-    const facts = await this.collect(info, snapshot);
+  async build(info, snapshot, options = {}) {
+    const facts = await this.collect(info, snapshot, options);
     const settings = this.getSettings();
     let body = null;
     let source = "template";
@@ -1009,7 +1314,7 @@ var GuideGenerator = class {
     const tags = ["Obsidian", "\u63D2\u4EF6", facts.category.label];
     return [
       "---",
-      `title: ${JSON.stringify(`\u63D2\u4EF6\u6307\u5357 - ${info.name}`)}`,
+      `title: ${JSON.stringify(`\u6307\u5357 - ${info.name}`)}`,
       "type: \u63D2\u4EF6\u6307\u5357",
       `plugin: ${info.id}`,
       `version: ${JSON.stringify(info.version)}`,
@@ -1356,6 +1661,18 @@ var PluginCatalogSettingTab = class extends import_obsidian7.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
+    new import_obsidian7.Setting(containerEl).setName("\u5378\u8F7D\u63D2\u4EF6\u65F6\u5220\u9664\u81EA\u52A8\u751F\u6210\u7684\u6307\u5357").setDesc("\u53EA\u5220\u672C\u63D2\u4EF6\u751F\u6210\u7684\u6307\u5357\uFF08\u5E26 generator \u6807\u8BB0\uFF09\uFF0C\u624B\u5199\u6307\u5357\u4FDD\u7559\u5E76\u4ECE\u603B\u89C8\u79FB\u9664\uFF1B\u5220\u9664\u524D\u4F1A\u5148\u5907\u4EFD\u3002").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.deleteGuidesOnUninstall).onChange(async (value) => {
+        this.plugin.settings.deleteGuidesOnUninstall = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian7.Setting(containerEl).setName("\u624B\u52A8\u751F\u6210\u65F6\u6293\u53D6\u771F\u5B9E\u8BBE\u7F6E\u9875").setDesc("\u70B9\u300C\u751F\u6210/\u91CD\u751F\u6210\u300D\u65F6\u77ED\u6682\u6253\u5F00\u8BE5\u63D2\u4EF6\u8BBE\u7F6E\u9875\uFF0C\u8BFB\u53D6\u6BCF\u4E2A\u6309\u94AE\u7684\u6587\u5B57\u4E0E\u5F53\u524D\u72B6\u6001\uFF1B\u5931\u8D25\u81EA\u52A8\u56DE\u9000\u4EE3\u7801\u63D0\u53D6\u3002\u5B89\u88C5\u65F6\u7684\u81EA\u52A8\u751F\u6210\u4E0D\u4F1A\u5F39\u8BBE\u7F6E\u9875\u3002").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.scrapeSettingsOnManual).onChange(async (value) => {
+        this.plugin.settings.scrapeSettingsOnManual = value;
+        await this.plugin.saveSettings();
+      })
+    );
     new import_obsidian7.Setting(containerEl).setName("\u6293\u53D6 GitHub README \u4F5C\u4E3A\u7D20\u6750").setDesc("\u9700\u8981\u80FD\u8BBF\u95EE raw.githubusercontent.com\uFF1B\u5931\u8D25\u4F1A\u81EA\u52A8\u8DF3\u8FC7\uFF0C\u4E0D\u5F71\u54CD\u751F\u6210\u3002").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.fetchReadme).onChange(async (value) => {
         this.plugin.settings.fetchReadme = value;
@@ -1473,6 +1790,7 @@ var PluginCatalogPlugin = class extends import_obsidian8.Plugin {
     this.scanQueued = false;
     this.scanning = false;
     this.booted = false;
+    this.knownIds = null;
   }
   async onload() {
     var _a;
@@ -1567,6 +1885,8 @@ ${detail}
     this.booted = true;
     try {
       this.watcher.start();
+      await this.migrateNaming();
+      this.knownIds = await this.readKnownIds();
       await this.library.refresh(true);
       await this.scanOnce("startup");
       const missing = this.snapshot.plugins.filter((plugin) => !plugin.guidePath);
@@ -1578,6 +1898,102 @@ ${detail}
       }
     } catch (error) {
       console.error("[plugin-catalog-guide] \u542F\u52A8\u626B\u63CF\u5931\u8D25", error);
+    }
+  }
+  /** 旧命名 插件指南 - X.md → 指南-X.md；用 Obsidian 文件管理器重命名以同步库内链接 */
+  async migrateNaming() {
+    var _a;
+    if (this.settings.namingMigrated) return;
+    try {
+      const folder = this.library.folderPath();
+      if (!await this.app.vault.adapter.exists(folder)) {
+        this.settings.namingMigrated = true;
+        await this.saveData(this.settings);
+        return;
+      }
+      const listing = await this.app.vault.adapter.list(folder);
+      let renamed = 0;
+      for (const path of listing.files) {
+        const name = (_a = path.split("/").pop()) != null ? _a : "";
+        const match = name.match(/^插件指南\s*-\s*(.+)\.md$/);
+        if (!match) continue;
+        const target = (0, import_obsidian8.normalizePath)(`${folder}/\u6307\u5357-${sanitizeFileName(match[1])}.md`);
+        if (await this.app.vault.adapter.exists(target)) continue;
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (file instanceof import_obsidian8.TFile) {
+          await this.app.fileManager.renameFile(file, target);
+        } else {
+          await this.app.vault.adapter.write(target, await this.app.vault.adapter.read(path));
+          await this.app.vault.adapter.remove(path);
+        }
+        renamed += 1;
+      }
+      this.settings.namingMigrated = true;
+      await this.saveData(this.settings);
+      if (renamed > 0) {
+        new import_obsidian8.Notice(`\u63D2\u4EF6\u76EE\u5F55\u4E0E\u6307\u5357\uFF1A\u5DF2\u628A ${renamed} \u4EFD\u6307\u5357\u91CD\u547D\u540D\u4E3A\u300C\u6307\u5357-XXX\u300D`);
+        console.log(`[plugin-catalog-guide] \u91CD\u547D\u540D ${renamed} \u4EFD\u6307\u5357`);
+      }
+    } catch (error) {
+      console.warn("[plugin-catalog-guide] \u91CD\u547D\u540D\u65E7\u6307\u5357\u5931\u8D25", error);
+    }
+  }
+  async readKnownIds() {
+    try {
+      const path = `${WORK_DIR}/known-plugins.json`;
+      if (!await this.app.vault.adapter.exists(path)) return null;
+      const parsed = JSON.parse(await this.app.vault.adapter.read(path));
+      return Array.isArray(parsed == null ? void 0 : parsed.ids) ? parsed.ids.map(String) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  async updateKnownIds(snapshot) {
+    var _a;
+    const ids = snapshot.plugins.map((plugin) => plugin.id).sort();
+    const known = ((_a = this.knownIds) != null ? _a : []).slice().sort();
+    if (ids.join("\0") === known.join("\0")) return;
+    this.knownIds = ids;
+    try {
+      await this.library.ensureFolder(WORK_DIR);
+      await this.app.vault.adapter.write(
+        `${WORK_DIR}/known-plugins.json`,
+        JSON.stringify({ at: formatDateTime(/* @__PURE__ */ new Date()), ids }, null, 2)
+      );
+    } catch (error) {
+      console.warn("[plugin-catalog-guide] \u5199\u5165\u63D2\u4EF6\u6E05\u5355\u5931\u8D25", error);
+    }
+  }
+  /** 插件被卸载：删除其自动生成的指南（手写稿保留），并让总览同步移除 */
+  async cleanupRemovedGuides(snapshot, previous) {
+    var _a, _b;
+    const currentIds = new Set(snapshot.plugins.map((plugin) => plugin.id));
+    const known = new Set((_a = this.knownIds) != null ? _a : []);
+    for (const plugin of (_b = previous == null ? void 0 : previous.plugins) != null ? _b : []) known.add(plugin.id);
+    const removed = Array.from(known).filter((id) => !currentIds.has(id));
+    if (removed.length === 0) return;
+    if (!this.settings.deleteGuidesOnUninstall) {
+      console.log(`[plugin-catalog-guide] \u68C0\u6D4B\u5230\u5378\u8F7D\uFF1A${removed.join(", ")}\uFF08\u5DF2\u5173\u95ED\u81EA\u52A8\u5220\u9664\u6307\u5357\uFF09`);
+      return;
+    }
+    let deleted = 0;
+    for (const id of removed) {
+      const entries = this.library.entriesForPlugin(id);
+      for (const entry of entries) {
+        if (!entry.managed) continue;
+        try {
+          if (await this.library.deleteGuide(entry)) {
+            deleted += 1;
+            console.log(`[plugin-catalog-guide] \u5DF2\u5220\u9664\u81EA\u52A8\u6307\u5357\uFF1A${entry.path}\uFF08\u63D2\u4EF6 ${id} \u5DF2\u5378\u8F7D\uFF09`);
+          }
+        } catch (error) {
+          console.warn(`[plugin-catalog-guide] \u5220\u9664\u6307\u5357\u5931\u8D25\uFF1A${entry.path}`, error);
+        }
+      }
+    }
+    if (deleted > 0) {
+      await this.library.refresh(true);
+      new import_obsidian8.Notice(`\u63D2\u4EF6\u5DF2\u5378\u8F7D\uFF0C\u5DF2\u5220\u9664 ${deleted} \u4EFD\u81EA\u52A8\u751F\u6210\u7684\u6307\u5357`);
     }
   }
   // ------------------------------------------------------------- scanning
@@ -1600,9 +2016,11 @@ ${detail}
       const previous = this.lastSnapshot;
       this.snapshot = snapshot;
       this.lastSnapshot = snapshot;
+      await this.cleanupRemovedGuides(snapshot, previous);
       await this.syncGuidesMetadata(snapshot);
       this.notifyViews();
       await this.writeIndex(false);
+      await this.updateKnownIds(snapshot);
       const signature = snapshotSignature(snapshot);
       const changed = signature !== this.lastSignature;
       this.lastSignature = signature;
@@ -1720,7 +2138,9 @@ ${detail}
         this.status.set(item.id, "running");
         this.notifyViews();
         try {
-          const { markdown, source } = await this.generator.build(info, this.snapshot);
+          const { markdown, source } = await this.generator.build(info, this.snapshot, {
+            manual: item.manual
+          });
           const policy = item.manual ? "overwrite" : this.settings.overwritePolicy;
           const result = await this.library.writeGuide(info, markdown, policy);
           this.status.set(item.id, "idle");

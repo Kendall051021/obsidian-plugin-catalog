@@ -1,9 +1,11 @@
 import { App, requestUrl } from "obsidian";
-import type { PluginCatalogSettings, PluginInfo, Snapshot } from "./types";
+import type { PluginCatalogSettings, PluginInfo, SettingItem, Snapshot } from "./types";
 import { classify, type Category } from "./category";
-import { describeSettingValue, formatDate, isSecretKey, repoFromUrl, truncate } from "./util";
+import { describeSettingValue, formatDate, isSecretKey, repoFromUrl } from "./util";
 import { buildTemplateGuideBody } from "./guide-template";
 import { generateWithAI } from "./ai";
+import { parseSettingsFromCode } from "./settings-extract";
+import { scrapeSettingsTab } from "./settings-scrape";
 
 const COMMUNITY_URL =
   "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json";
@@ -24,10 +26,17 @@ export interface GuideFacts {
   repo: string | null;
   readme: string | null;
   settings: SettingFact[];
+  settingItems: SettingItem[];
+  settingsScraped: boolean;
   related: string[];
   category: Category;
   vaultName: string;
   allPlugins: PluginInfo[];
+}
+
+export interface BuildOptions {
+  /** 手动触发（按钮/命令）时才抓取真实设置页 */
+  manual?: boolean;
 }
 
 let communityCache: { at: number; map: Map<string, CommunityEntry> } | null = null;
@@ -74,10 +83,14 @@ async function loadCommunityIndex(): Promise<Map<string, CommunityEntry>> {
   return map;
 }
 
+function normalizeKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export class GuideGenerator {
   constructor(private app: App, private getSettings: () => PluginCatalogSettings) {}
 
-  async collect(info: PluginInfo, snapshot: Snapshot): Promise<GuideFacts> {
+  async collect(info: PluginInfo, snapshot: Snapshot, options: BuildOptions = {}): Promise<GuideFacts> {
     const settings = this.getSettings();
     let repo: string | null = null;
     try {
@@ -94,11 +107,24 @@ export class GuideGenerator {
       readme = await this.fetchReadme(repo);
     }
 
+    let settingItems = await this.collectCodeSettings(info);
+    let settingsScraped = false;
+    if (options.manual && settings.scrapeSettingsOnManual && info.enabled) {
+      const live = await scrapeSettingsTab(this.app, info.id);
+      if (live.length > 0) {
+        settingItems = live;
+        settingsScraped = true;
+      }
+    }
+    settingItems = this.attachCurrentValues(settingItems, settingFacts);
+
     return {
       info,
       repo,
       readme,
       settings: settingFacts,
+      settingItems,
+      settingsScraped,
       related: snapshot.plugins
         .filter((item) => item.enabled && item.id !== info.id && item.id !== "plugin-catalog-guide")
         .slice(0, 10)
@@ -116,7 +142,7 @@ export class GuideGenerator {
       const parsed = JSON.parse(await this.app.vault.adapter.read(path));
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
       return Object.entries(parsed as Record<string, unknown>)
-        .slice(0, 40)
+        .slice(0, 60)
         .map(([key, value]) => ({
           key,
           value: isSecretKey(key) ? "已配置（已脱敏）" : describeSettingValue(value),
@@ -125,6 +151,49 @@ export class GuideGenerator {
     } catch {
       return [];
     }
+  }
+
+  private async collectCodeSettings(info: PluginInfo): Promise<SettingItem[]> {
+    const path = `${info.folderPath}/main.js`;
+    try {
+      if (!(await this.app.vault.adapter.exists(path))) return [];
+      const code = await this.app.vault.adapter.read(path);
+      if (!code || code.length < 200) return [];
+      return parseSettingsFromCode(code.slice(0, 3_000_000));
+    } catch {
+      return [];
+    }
+  }
+
+  /** 把 data.json 里的值按“标签 ↔ 键名”相似度贴到代码提取的设置项上 */
+  private attachCurrentValues(items: SettingItem[], facts: SettingFact[]): SettingItem[] {
+    if (facts.length === 0) return items;
+    const keys = facts.map((fact) => fact.key);
+    return items.map((item) => {
+      if (item.current) return item;
+      const normalized = normalizeKey(item.label);
+      if (!normalized) return item;
+      let bestKey: string | null = null;
+      let bestScore = 0;
+      for (const key of keys) {
+        const candidate = normalizeKey(key);
+        if (!candidate) continue;
+        if (candidate === normalized) {
+          bestKey = key;
+          break;
+        }
+        if (candidate.includes(normalized) || normalized.includes(candidate)) {
+          const score = Math.min(candidate.length, normalized.length);
+          if (score > bestScore) {
+            bestScore = score;
+            bestKey = key;
+          }
+        }
+      }
+      if (!bestKey) return item;
+      const fact = facts.find((entry) => entry.key === bestKey);
+      return fact ? { ...item, current: fact.value } : item;
+    });
   }
 
   private async fetchReadme(repo: string): Promise<string | null> {
@@ -148,8 +217,12 @@ export class GuideGenerator {
     return null;
   }
 
-  async build(info: PluginInfo, snapshot: Snapshot): Promise<{ markdown: string; source: "template" | "ai" }> {
-    const facts = await this.collect(info, snapshot);
+  async build(
+    info: PluginInfo,
+    snapshot: Snapshot,
+    options: BuildOptions = {}
+  ): Promise<{ markdown: string; source: "template" | "ai" }> {
+    const facts = await this.collect(info, snapshot, options);
     const settings = this.getSettings();
     let body: string | null = null;
     let source: "template" | "ai" = "template";
@@ -173,7 +246,7 @@ export class GuideGenerator {
     const tags = ["Obsidian", "插件", facts.category.label];
     return [
       "---",
-      `title: ${JSON.stringify(`插件指南 - ${info.name}`)}`,
+      `title: ${JSON.stringify(`指南 - ${info.name}`)}`,
       "type: 插件指南",
       `plugin: ${info.id}`,
       `version: ${JSON.stringify(info.version)}`,
@@ -189,5 +262,3 @@ export class GuideGenerator {
     ].join("\n");
   }
 }
-
-export { truncate };
